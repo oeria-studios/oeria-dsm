@@ -2,7 +2,7 @@
   <img src="https://i.imgur.com/3djf50r.png" alt="oeria-dsm logo">
 </p>
 <p align="center">
-  <a href="https://github.com/oeria-studios/oeria-dsm/releases/latest">
+  <a href="https://github.com/oeria-studios/oeria-dsm/releases/v0.1.0">
     <img src="https://img.shields.io/github/v/release/oeria-studios/oeria-dsm?style=for-the-badge" alt="release">
   </a>
   <a href="https://github.com/oeria-studios/oeria-dsm/releases">
