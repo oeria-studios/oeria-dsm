@@ -687,6 +687,32 @@ html, body {
 .form-error { display: none; font-size: 13px; font-weight: 600; color: var(--red-dark); margin: -4px 0 0; }
 .form-error.show { display: block; }
 
+#wowBuildModal { z-index: 11; }
+.modal-wow-build { max-width: 560px; width: 100%; }
+.wow-build-console { height: 320px; border-radius: 10px; padding: 10px 14px; font-size: 12px; margin-top: 4px; }
+.wow-build-status { font-size: 13px; font-weight: 600; margin: -8px 0 0; }
+.wow-build-status.status-running { color: var(--blue, #6fb1ff); }
+.wow-build-status.status-done { color: var(--green, #4caf50); }
+.wow-build-status.status-error { color: var(--red-dark, #ff7b8a); }
+
+.wow-build-progress {
+  flex: 1;
+  align-self: center;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.wow-build-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  background: var(--blue, #6fb1ff);
+  transition: width 0.5s ease, background-color 0.3s ease;
+}
+.wow-build-progress-fill.status-done { background: var(--green, #4caf50); }
+.wow-build-progress-fill.status-error { background: var(--red-dark, #ff7b8a); }
+
 .modal-settings {
   width: 720px;
   max-width: 92vw;

@@ -31,6 +31,12 @@ const serverTitle = el('serverTitle');
 const serverGameIcon = el('serverGameIcon');
 const tpsBadge = el('tpsBadge');
 const playersPanel = el('playersPanel');
+const authStatusBadge = el('authStatusBadge');
+const authStatusDot = el('authStatusDot');
+const authStatusText = el('authStatusText');
+const dbStatusBadge = el('dbStatusBadge');
+const dbStatusDot = el('dbStatusDot');
+const dbStatusText = el('dbStatusText');
 
 let currentServerId = null;
 let serverSummaries = new Map(); // id -> { id, name, game, status, players, gamePort }
@@ -49,6 +55,20 @@ const GAME_ICONS = {
   palworld: 'egg-fill',
   fivem: 'car-front-fill',
   '7dtd': 'calendar-week',
+  wow: 'shield-fill',
+};
+const WOW_VERSION_LABELS = {
+  vanilla: 'Vanilla / Classic',
+  tbc: 'The Burning Crusade',
+  wotlk: 'Wrath of the Lich King',
+  cata: 'Cataclysm',
+  mop: 'Mists of Pandaria',
+  wod: 'Warlords of Draenor',
+  legion: 'Legion',
+  bfa: 'Battle for Azeroth',
+  shadowlands: 'Shadowlands',
+  dragonflight: 'Dragonflight',
+  thewarwithin: 'The War Within',
 };
 const GAME_LABELS = {
   minecraft: 'Minecraft',
@@ -61,6 +81,7 @@ const GAME_LABELS = {
   palworld: 'Palworld',
   fivem: 'FiveM',
   '7dtd': '7 Days to Die',
+  wow: 'World of Warcraft',
 };
 const DEFAULT_ICON_COLOR = '#1f6fc0';
 
@@ -255,10 +276,15 @@ function applyServerConfig(cfg) {
   serverGameIcon.className = 'bi ' + serverIcon(cfg);
   serverGameIcon.parentElement.style.background = serverColor(cfg);
   const isMinecraft = cfg.game === 'minecraft';
+  const isWow = cfg.game === 'wow';
   tpsBadge.classList.toggle('view-hidden', !isMinecraft);
   playersPanel.classList.toggle('view-hidden', !isMinecraft);
+  authStatusBadge.classList.toggle('view-hidden', !isWow);
+  dbStatusBadge.classList.toggle('view-hidden', !isWow);
   serverPathEl.textContent = isMinecraft
     ? `${cfg.serverDir}\\${cfg.jarName} • RAM ${cfg.minRam}-${cfg.maxRam}`
+    : cfg.game === 'wow' && cfg.wowVersion
+    ? `${cfg.serverDir}\\${cfg.exePath} • ${WOW_VERSION_LABELS[cfg.wowVersion] || cfg.wowVersion}`
     : `${cfg.serverDir}\\${cfg.exePath}`;
   gamePort = cfg.gamePort;
 }
@@ -563,6 +589,20 @@ socket.on('console:line', ({ id, entry }) => {
 });
 socket.on('status', (data) => { if (data.id === currentServerId) updateStatusUI(data); });
 
+function applyAuthStatus(status) {
+  authStatusDot.className = 'dot ' + status;
+  authStatusText.textContent = 'Auth';
+  authStatusBadge.title = status === 'running' ? "Serveur d'authentification en ligne" : "Serveur d'authentification hors ligne";
+}
+socket.on('authStatus', (data) => { if (data.id === currentServerId) applyAuthStatus(data.status); });
+
+function applyDbStatus(open) {
+  dbStatusDot.className = 'dot ' + (open ? 'running' : 'stopped');
+  dbStatusText.textContent = 'MySQL';
+  dbStatusBadge.title = open ? 'Base de données MySQL en ligne' : 'Base de données MySQL hors ligne';
+}
+socket.on('wowMysqlStatus', ({ open }) => applyDbStatus(open));
+
 socket.on('eulaRequired', ({ id }) => { if (id === currentServerId) eulaBanner.classList.add('show'); });
 
 socket.on('tps', ({ id, tps }) => {
@@ -789,6 +829,7 @@ const createServerForm = el('createServerForm');
 const newServerGame = el('newServerGame');
 const newServerMcFields = el('newServerMcFields');
 const newServerGmodFields = el('newServerGmodFields');
+const newServerWowFields = el('newServerWowFields');
 const createServerError = el('createServerError');
 
 function showCreateServerError(message) {
@@ -798,8 +839,14 @@ function showCreateServerError(message) {
 
 function toggleCreateFields() {
   const isMc = newServerGame.value === 'minecraft';
+  const isWow = newServerGame.value === 'wow';
   newServerMcFields.classList.toggle('view-hidden', !isMc);
-  newServerGmodFields.classList.toggle('view-hidden', isMc);
+  // WoW's port and executable are auto-detected from the folder, so those inputs stay out of the way.
+  newServerGmodFields.classList.toggle('view-hidden', isMc || isWow);
+  el('newServerPortField').classList.toggle('view-hidden', isWow);
+  newServerWowFields.classList.toggle('view-hidden', !isWow);
+  el('newServerName').placeholder = isWow ? 'Laisser vide = nom du dossier' : 'Mon serveur';
+  if (isWow) toggleWowBuildAvailability();
 }
 newServerGame.addEventListener('change', toggleCreateFields);
 
@@ -808,11 +855,195 @@ el('btnCreateServer').addEventListener('click', () => {
   createServerForm.reset();
   toggleCreateFields();
   showCreateServerError('');
+  resetWowBuildUI();
   el('newServerColor').value = DEFAULT_ICON_COLOR;
   renderIconPicker('newServerIconGrid', 'newServerIcon', 'newServerColor', 'newServerIconPreview');
   createServerModal.classList.add('show');
 });
 el('createServerCancel').addEventListener('click', () => createServerModal.classList.remove('show'));
+
+// ---- WoW automated build (compile AzerothCore into the chosen folder) ----
+const newServerWowVersion = el('newServerWowVersion');
+const btnWowBuild = el('btnWowBuild');
+const wowBuildVersionNote = el('wowBuildVersionNote');
+const wowBuildModal = el('wowBuildModal');
+const wowBuildConsole = el('wowBuildConsole');
+const wowBuildStatusText = el('wowBuildStatusText');
+const wowBuildProgressFill = el('wowBuildProgressFill');
+const WOW_BUILDABLE_VERSIONS = new Set(['wotlk']);
+let currentWowBuildId = null;
+let currentWowBuildStatus = null;
+let wowBuildProgressPercent = 0;
+
+// No real percentage is available from the build itself (just a log stream), so this
+// approximates progress from the same "[Dashboard] ..." markers already logged server-side —
+// good enough to show movement without pretending to be exact.
+const WOW_BUILD_PROGRESS_STAGES = [
+  ['Téléchargement de vcpkg', 5],
+  ['Initialisation de vcpkg', 8],
+  ['Installation de Boost et OpenSSL via vcpkg', 12],
+  ['MySQL introuvable', 45],
+  ['MySQL installé dans', 55],
+  ['Téléchargement des sources', 58],
+  ['Sources déjà présentes', 58],
+  ['Configuration CMake', 62],
+  ['Compilation en cours (authserver', 68],
+  ['Copie des exécutables', 96],
+  ['Terminé :', 99],
+];
+
+function setWowBuildProgress(percent, statusClass) {
+  wowBuildProgressPercent = percent;
+  wowBuildProgressFill.style.width = `${percent}%`;
+  wowBuildProgressFill.className = 'wow-build-progress-fill' + (statusClass ? ` ${statusClass}` : '');
+}
+
+function advanceWowBuildProgressFromLine(line) {
+  const stage = WOW_BUILD_PROGRESS_STAGES.find(([marker]) => line.includes(marker));
+  if (stage && stage[1] > wowBuildProgressPercent) setWowBuildProgress(stage[1], 'status-running');
+}
+
+function isWowBuildActive() {
+  return !!currentWowBuildId && (currentWowBuildStatus === 'running' || currentWowBuildStatus === 'pending');
+}
+
+function toggleWowBuildAvailability() {
+  const buildable = WOW_BUILDABLE_VERSIONS.has(newServerWowVersion.value);
+  btnWowBuild.disabled = !buildable && !isWowBuildActive();
+  wowBuildVersionNote.classList.toggle('view-hidden', buildable);
+}
+newServerWowVersion.addEventListener('change', toggleWowBuildAvailability);
+
+// A full AzerothCore build with MSBuild's /m can print tens of thousands of lines (one build
+// system compiles many hundreds of script files). Appending + auto-scrolling on every single
+// line as it arrives forces a synchronous layout reflow each time, which is what was freezing/
+// crashing the tab — so incoming lines are queued and flushed in one batch per animation frame,
+// and the DOM is capped so it can't grow unbounded over a long build.
+const MAX_WOW_BUILD_CONSOLE_LINES = 500;
+let wowBuildPendingLines = [];
+let wowBuildFlushScheduled = false;
+
+function resetWowBuildUI() {
+  currentWowBuildId = null;
+  currentWowBuildStatus = null;
+  wowBuildModal.classList.remove('show');
+  wowBuildConsole.innerHTML = '';
+  wowBuildPendingLines = [];
+  setWowBuildProgress(0, null);
+  toggleWowBuildAvailability();
+}
+
+function flushWowBuildLines() {
+  wowBuildFlushScheduled = false;
+  if (wowBuildPendingLines.length === 0) return;
+  // A single compiler error can dump thousands of lines at once (template instantiation
+  // spam). Scanning all of them for progress markers is cheap, but only the tail end is
+  // ever going to survive the DOM cap below, so only that tail is actually rendered —
+  // otherwise one giant burst can still do enough synchronous DOM work in a single frame
+  // to freeze/crash the tab even with capping applied afterwards.
+  for (const entry of wowBuildPendingLines) advanceWowBuildProgressFromLine(entry.line);
+  const toRender = wowBuildPendingLines.slice(-MAX_WOW_BUILD_CONSOLE_LINES);
+  wowBuildPendingLines = [];
+
+  const fragment = document.createDocumentFragment();
+  for (const entry of toRender) {
+    const div = document.createElement('div');
+    div.className = 'console-line ' + (entry.kind || 'info');
+    div.textContent = entry.line;
+    fragment.appendChild(div);
+  }
+  wowBuildConsole.appendChild(fragment);
+  while (wowBuildConsole.children.length > MAX_WOW_BUILD_CONSOLE_LINES) {
+    wowBuildConsole.removeChild(wowBuildConsole.firstChild);
+  }
+  wowBuildConsole.scrollTop = wowBuildConsole.scrollHeight;
+}
+
+const MAX_WOW_BUILD_PENDING_LINES = 5000;
+
+function addWowBuildLine(entry) {
+  wowBuildPendingLines.push(entry);
+  // Cap the queue itself too: if lines are arriving faster than animation frames can flush
+  // them (a very large burst), drop the oldest queued ones rather than letting it grow
+  // without bound until the next frame gets a chance to run.
+  if (wowBuildPendingLines.length > MAX_WOW_BUILD_PENDING_LINES) {
+    wowBuildPendingLines.splice(0, wowBuildPendingLines.length - MAX_WOW_BUILD_PENDING_LINES);
+  }
+  if (!wowBuildFlushScheduled) {
+    wowBuildFlushScheduled = true;
+    requestAnimationFrame(flushWowBuildLines);
+  }
+}
+
+function applyWowBuildStatus(status) {
+  currentWowBuildStatus = status;
+  if (status === 'running' || status === 'pending') {
+    wowBuildStatusText.className = 'wow-build-status status-running';
+    wowBuildStatusText.textContent = 'Compilation en cours... (20 à 60 minutes)';
+    btnWowBuild.disabled = true;
+  } else if (status === 'done') {
+    wowBuildStatusText.className = 'wow-build-status status-done';
+    wowBuildStatusText.textContent = 'Terminé — tu peux cliquer sur "Créer".';
+    btnWowBuild.disabled = false;
+    setWowBuildProgress(100, 'status-done');
+  } else if (status === 'error') {
+    wowBuildStatusText.className = 'wow-build-status status-error';
+    wowBuildStatusText.textContent = 'Échec de la compilation, voir les logs ci-dessous.';
+    btnWowBuild.disabled = false;
+    setWowBuildProgress(wowBuildProgressPercent, 'status-error');
+  }
+}
+
+el('wowBuildClose').addEventListener('click', () => wowBuildModal.classList.remove('show'));
+
+btnWowBuild.addEventListener('click', () => {
+  // A build for this session is already running: just reopen the progress window on it.
+  if (isWowBuildActive()) {
+    wowBuildModal.classList.add('show');
+    socket.emit('wow:build:join', { buildId: currentWowBuildId });
+    return;
+  }
+
+  const serverDir = el('newServerDir').value.trim();
+  if (!serverDir) {
+    showCreateServerError('Indique le dossier du serveur avant de lancer la compilation.');
+    return;
+  }
+  showCreateServerError('');
+  wowBuildConsole.innerHTML = '';
+  setWowBuildProgress(2, 'status-running');
+  wowBuildModal.classList.add('show');
+  btnWowBuild.disabled = true;
+  wowBuildStatusText.className = 'wow-build-status status-running';
+  wowBuildStatusText.textContent = 'Démarrage de la compilation...';
+
+  socket.emit('wow:build:start', { serverDir, versionKey: newServerWowVersion.value }, (result) => {
+    if (result && result.error) {
+      wowBuildStatusText.className = 'wow-build-status status-error';
+      wowBuildStatusText.textContent = result.error;
+      btnWowBuild.disabled = false;
+      return;
+    }
+    currentWowBuildId = result.buildId;
+  });
+});
+
+socket.on('wowBuild:line', ({ buildId, entry }) => {
+  if (buildId === currentWowBuildId) addWowBuildLine(entry);
+});
+
+socket.on('wowBuild:status', ({ buildId, status }) => {
+  if (buildId === currentWowBuildId) applyWowBuildStatus(status);
+});
+
+socket.on('wowBuild:history', ({ buildId, history, status }) => {
+  if (buildId !== currentWowBuildId) return;
+  wowBuildConsole.innerHTML = '';
+  wowBuildPendingLines = [];
+  setWowBuildProgress(0, null);
+  history.forEach(addWowBuildLine);
+  applyWowBuildStatus(status);
+});
 
 // ---- Clone an existing server into the create form ----
 let pendingCloneId = null;
@@ -820,6 +1051,7 @@ let pendingCloneId = null;
 function fillCloneForm(cfg) {
   createServerForm.reset();
   showCreateServerError('');
+  resetWowBuildUI();
   el('newServerName').value = `${cfg.name} (copie)`;
   newServerGame.value = cfg.game;
   toggleCreateFields();
@@ -829,6 +1061,8 @@ function fillCloneForm(cfg) {
   el('newServerMinRam').value = cfg.minRam || '';
   el('newServerMaxRam').value = cfg.maxRam || '';
   el('newServerExe').value = cfg.exePath || '';
+  el('newServerWowVersion').value = cfg.wowVersion || 'wotlk';
+  toggleWowBuildAvailability();
   el('newServerIcon').value = cfg.icon || (GAME_ICONS[cfg.game] || 'bi-joystick').replace(/^bi-/, '');
   el('newServerColor').value = toHexColor(cfg.color) || DEFAULT_ICON_COLOR;
   renderIconPicker('newServerIconGrid', 'newServerIcon', 'newServerColor', 'newServerIconPreview');
@@ -842,6 +1076,7 @@ function openCreateModalWithClone(id) {
     createServerForm.reset();
     toggleCreateFields();
     showCreateServerError('');
+    resetWowBuildUI();
     el('newServerColor').value = DEFAULT_ICON_COLOR;
     renderIconPicker('newServerIconGrid', 'newServerIcon', 'newServerColor', 'newServerIconPreview');
   }
@@ -854,7 +1089,8 @@ createServerForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const name = el('newServerName').value.trim();
   const serverDir = el('newServerDir').value.trim();
-  if (!name || !serverDir) {
+  const isWowCreate = newServerGame.value === 'wow';
+  if ((!name && !isWowCreate) || !serverDir) {
     showCreateServerError('Le nom et le dossier du serveur sont obligatoires.');
     return;
   }
@@ -870,6 +1106,7 @@ createServerForm.addEventListener('submit', (e) => {
     minRam: el('newServerMinRam').value.trim(),
     maxRam: el('newServerMaxRam').value.trim(),
     exePath: el('newServerExe').value.trim(),
+    wowVersion: el('newServerWowVersion').value,
     icon: el('newServerIcon').value.trim(),
     color: el('newServerColor').value,
   };
@@ -887,13 +1124,20 @@ const settingsModal = el('settingsModal');
 const settingsForm = el('settingsForm');
 const setMcFields = el('setMcFields');
 const setGmodFields = el('setGmodFields');
+const setWowFields = el('setWowFields');
 
 function openSettingsModal() {
   const cfg = serverConfigs.get(currentServerId);
   if (!cfg) return;
   const isMc = cfg.game === 'minecraft';
+  const isWow = cfg.game === 'wow';
   setMcFields.classList.toggle('view-hidden', !isMc);
   setGmodFields.classList.toggle('view-hidden', isMc);
+  setWowFields.classList.toggle('view-hidden', !isWow);
+  if (isWow) {
+    el('setWowVersion').value = cfg.wowVersion || 'wotlk';
+    el('setWowAuthExe').value = cfg.authExePath || '';
+  }
 
   el('setName').value = cfg.name || '';
   el('setPort').value = cfg.gamePort || '';
@@ -946,6 +1190,10 @@ settingsForm.addEventListener('submit', (e) => {
   } else {
     patch.exePath = el('setExe').value.trim();
     patch.launchArgs = el('setLaunchArgs').value.trim().split(/\s+/).filter(Boolean);
+    if (cfg.game === 'wow') {
+      patch.wowVersion = el('setWowVersion').value;
+      patch.authExePath = el('setWowAuthExe').value.trim() || null;
+    }
   }
 
   socket.emit('servers:updateSettings', { id: currentServerId, patch });

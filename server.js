@@ -1,7 +1,8 @@
 const fs = require('fs');
 const net = require('net');
 const path = require('path');
-const { spawn, exec } = require('child_process');
+const { spawn, exec, execFileSync } = require('child_process');
+const { randomUUID } = require('crypto');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -33,8 +34,189 @@ const GAME_DEFAULTS = {
   palworld: { port: 8211, exePath: 'PalServer.exe', launchArgs: ['-nographics'] },
   fivem: { port: 30120, exePath: 'FXServer.exe', launchArgs: ['+exec', 'server.cfg'] },
   '7dtd': { port: 26900, exePath: '7DaysToDieServer.exe', launchArgs: [] },
+  wow: { port: 8085, exePath: 'worldserver.exe', launchArgs: [] },
 };
 const VALID_GAMES = new Set(['minecraft', ...Object.keys(GAME_DEFAULTS)]);
+
+// Expansion targeted by the emulator core (TrinityCore/AzerothCore/CMaNGOS...) running in
+// the server's folder. Purely descriptive metadata — it doesn't change how the process is
+// launched, but lets the dashboard show/filter servers by expansion.
+const WOW_VERSIONS = new Set([
+  'vanilla', 'tbc', 'wotlk', 'cata', 'mop', 'wod', 'legion', 'bfa', 'shadowlands', 'dragonflight', 'thewarwithin',
+]);
+const DEFAULT_WOW_VERSION = 'wotlk';
+
+// A WoW server needs two binaries to actually be playable: the login/realmlist server and
+// the world server. Different cores name them differently (TrinityCore/AzerothCore vs.
+// MaNGOS), so the folder is scanned for either pair instead of asking the user to type paths.
+const WOW_EXE_CANDIDATES = {
+  world: ['worldserver.exe', 'mangosd.exe'],
+  auth: ['authserver.exe', 'realmd.exe'],
+};
+
+function detectWowExecutables(serverDir) {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(serverDir);
+  } catch (e) {
+    return { worldExe: null, authExe: null };
+  }
+  const byLowerName = new Map(entries.map((f) => [f.toLowerCase(), f]));
+  const findFirst = (candidates) => candidates.map((c) => byLowerName.get(c)).find(Boolean) || null;
+  return {
+    worldExe: findFirst(WOW_EXE_CANDIDATES.world),
+    authExe: findFirst(WOW_EXE_CANDIDATES.auth),
+  };
+}
+
+// ---- WoW automated build (compile a core from source into the server folder) ----
+// Neither TrinityCore nor AzerothCore publish precompiled binaries, so "installing" a WoW
+// server means cloning the official source and compiling it with CMake + MSBuild. Only
+// AzerothCore/WotLK has a build reliable enough to automate unattended; other expansions
+// rely on far less standardized community forks, so they're left to manual setup.
+const WOW_BUILD_REPOS = {
+  wotlk: {
+    label: 'AzerothCore (WotLK 3.3.5a)',
+    url: 'https://github.com/azerothcore/azerothcore-wotlk.git',
+    branch: 'master',
+  },
+};
+
+// MySQL still comes from a pinned, verified direct download — it's a plain ZIP of
+// precompiled dev libraries, no installer/GUI involved, so it isn't fragile like the Boost/
+// OpenSSL installers turned out to be (see vcpkg note below). Extracted next to the dashboard
+// itself (like vcpkg) rather than to C:\ — the system drive can be nearly full on some
+// machines while the drive hosting the dashboard/game servers has plenty of room.
+const WOW_DEPS = {
+  mysql: {
+    url: 'https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-8.4.11-winx64.zip',
+    zipName: 'mysql-8.4.11-winx64.zip',
+    extractedName: 'mysql-8.4.11-winx64',
+    installDir: path.join(__dirname, '.wow-mysql', 'MySQL Server 8.4'),
+  },
+};
+
+// A single shared MySQL instance (one per dashboard, not per WoW server) backs every WoW
+// server's databases — AzerothCore's default configs all point at the same
+// 127.0.0.1:3306/acore login regardless of which server folder they live in.
+const WOW_MYSQL_DATA_DIR = path.join(path.parse(__dirname).root, '.oeria-dsm-wow-mysql-data');
+const WOW_MYSQL_PORT = 3306;
+
+// Boost and OpenSSL come via vcpkg instead of their official GUI installers: those are Inno
+// Setup installers that proved unreliable to drive unattended (silently picking a dialog's
+// default answer — e.g. "Abort" — and exiting non-zero for no visible reason). vcpkg is a
+// pure command-line tool with no such surprises. Shared under the dashboard's own folder
+// (not per-server) so the Boost/OpenSSL build — the slow part — only happens once.
+const VCPKG_DIR = path.join(__dirname, '.wow-vcpkg');
+const VCPKG_TRIPLET = 'x64-windows-static-md';
+
+// The plain "boost" vcpkg port pulls in every Boost library, including boost-python — which
+// drags in Python/libffi built via an autoconf ./configure script that doesn't work in vcpkg's
+// plain MSVC environment. AzerothCore doesn't need Python at all, so instead this installs only
+// the specific libraries it actually requires: filesystem/program-options/iostreams/regex/thread
+// are the ones deps/boost/CMakeLists.txt links against, the rest are headers included directly
+// in src/ (confirmed by grepping the cloned source for every "#include <boost/...>").
+const VCPKG_BOOST_PORTS = [
+  'boost-filesystem', 'boost-program-options', 'boost-iostreams', 'boost-regex', 'boost-thread',
+  'boost-algorithm', 'boost-asio', 'boost-container', 'boost-dll', 'boost-heap',
+  'boost-iterator', 'boost-lexical-cast', 'boost-preprocessor', 'boost-process', 'boost-stacktrace',
+];
+
+function commandExists(cmd) {
+  try {
+    execFileSync(process.platform === 'win32' ? 'where' : 'which', [cmd], { stdio: 'ignore' });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// CMake ships bundled with Visual Studio's C++ workload but isn't necessarily on PATH.
+function findVsBundledCmake() {
+  const vswhere = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe';
+  if (!fs.existsSync(vswhere)) return null;
+  try {
+    const installPath = execFileSync(vswhere, ['-latest', '-products', '*', '-property', 'installationPath'], { encoding: 'utf8' }).trim();
+    if (!installPath) return null;
+    const candidate = path.join(installPath, 'Common7', 'IDE', 'CommonExtensions', 'Microsoft', 'CMake', 'CMake', 'bin', 'cmake.exe');
+    return fs.existsSync(candidate) ? candidate : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function hasVsCppWorkload() {
+  const vswhere = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe';
+  if (!fs.existsSync(vswhere)) return false;
+  try {
+    const out = execFileSync(vswhere, [
+      '-latest', '-products', '*',
+      '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+      '-property', 'installationPath',
+    ], { encoding: 'utf8' }).trim();
+    return !!out;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Checks our own extraction spot next to the dashboard first, then falls back to recognizing
+// a manually-installed MySQL (Program Files, or the plain "C:/MySQL" layout some guides use).
+function findMySqlRoot() {
+  if (fs.existsSync(path.join(WOW_DEPS.mysql.installDir, 'include', 'mysql.h'))) return WOW_DEPS.mysql.installDir;
+  if (commandExists('mysql')) return 'PATH';
+  for (const base of ['C:\\MySQL', 'C:\\Program Files\\MySQL']) {
+    try {
+      const match = fs.readdirSync(base).filter((n) => /^MySQL Server/i.test(n)).sort().pop();
+      if (match) return path.join(base, match);
+    } catch (e) {}
+  }
+  return null;
+}
+
+function checkWowBuildPrerequisites() {
+  const missing = [];
+  if (!commandExists('git')) missing.push('Git (git-scm.com)');
+  const cmakeExe = commandExists('cmake') ? 'cmake' : findVsBundledCmake();
+  if (!cmakeExe) missing.push('CMake');
+  if (!hasVsCppWorkload()) missing.push('Visual Studio avec le composant "Desktop development with C++"');
+  // Boost/OpenSSL (via vcpkg) and MySQL are handled separately: if missing, the build pipeline
+  // installs them itself rather than failing here (git/cmake/VS are too heavy to automate safely).
+  return {
+    ok: missing.length === 0,
+    missing,
+    cmakeExe,
+    mysqlRoot: findMySqlRoot(),
+  };
+}
+
+// Breadth-first search bounded like listConfigFiles() above — the build tree can be huge
+// (git history, intermediate object files) and we only need the handful of files sitting
+// next to the compiled executables.
+function findFilesRecursive(rootDir, wantedLowerNames, maxDepth = 6) {
+  const found = [];
+  const queue = [{ dir: rootDir, depth: 0 }];
+  while (queue.length > 0) {
+    const { dir, depth } = queue.shift();
+    if (depth > maxDepth) continue;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (e) {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === '.git') continue;
+        queue.push({ dir: full, depth: depth + 1 });
+      } else if (wantedLowerNames.has(entry.name.toLowerCase())) {
+        found.push(full);
+      }
+    }
+  }
+  return found;
+}
 
 function loadServerDefs() {
   if (fs.existsSync(SERVERS_PATH)) {
@@ -109,6 +291,7 @@ class ServerRuntime {
   constructor(cfg) {
     this.cfg = cfg;
     this.process = null;
+    this.authProcess = null; // WoW only: authserver/realmd, launched alongside the world server
     this.status = 'stopped'; // stopped | starting | running | stopping
     this.startedAt = null;
     this.pendingRestart = false;
@@ -236,7 +419,342 @@ function buildLaunchSpec(cfg) {
   };
 }
 
-function startServerRuntime(rt) {
+// WoW's login/realmlist server (authserver/realmd) runs as a second, independent process
+// alongside the world server. Optional: some setups run auth on a separate machine, so a
+// missing binary just means "world-only" rather than a hard error.
+function buildWowAuthLaunchSpec(cfg) {
+  if (!cfg.authExePath) return null;
+  const command = path.isAbsolute(cfg.authExePath) ? cfg.authExePath : path.join(cfg.serverDir, cfg.authExePath);
+  return { command, args: [] };
+}
+
+function broadcastAuthStatus(rt) {
+  io.emit('authStatus', { id: rt.cfg.id, status: rt.authProcess ? 'running' : 'stopped' });
+}
+
+function startWowAuthProcess(rt) {
+  const cfg = rt.cfg;
+  if (rt.authProcess) return;
+  const spec = buildWowAuthLaunchSpec(cfg);
+  if (!spec || !fs.existsSync(spec.command)) {
+    pushLog(rt, "[Dashboard] Aucun serveur d'authentification (authserver/realmd) trouvé, seul le monde a été démarré.", 'warn');
+    return;
+  }
+
+  pushLog(rt, `[Dashboard] Démarrage du serveur d'authentification : ${spec.command}`, 'info');
+  rt.authProcess = spawn(spec.command, spec.args, { cwd: cfg.serverDir });
+  broadcastAuthStatus(rt);
+
+  const onAuthData = (kind) => (chunk) => {
+    chunk.toString().split(/\r?\n/).forEach((l) => {
+      if (l.length === 0) return;
+      pushLog(rt, `[Auth] ${l}`, kind);
+    });
+  };
+  rt.authProcess.stdout.on('data', onAuthData('info'));
+  rt.authProcess.stderr.on('data', onAuthData('error'));
+
+  rt.authProcess.on('exit', (code) => {
+    pushLog(rt, `[Dashboard] Serveur d'authentification arrêté (code ${code}).`, code === 0 ? 'info' : 'warn');
+    rt.authProcess = null;
+    broadcastAuthStatus(rt);
+  });
+  rt.authProcess.on('error', (err) => {
+    pushLog(rt, `[Dashboard] Erreur au lancement du serveur d'authentification : ${err.message}`, 'error');
+    rt.authProcess = null;
+    broadcastAuthStatus(rt);
+  });
+}
+
+// ---- WoW: shared MySQL instance ----
+function runCommandAsync(command, args) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, { stdio: 'ignore' });
+    proc.on('error', reject);
+    proc.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${command} a échoué (code ${code}).`))));
+  });
+}
+
+// mysqld intermittently fails its very first startup right after --initialize-insecure with a
+// spurious "UNDO tablespace already exists" error (a known flaky Windows/InnoDB issue, most
+// likely antivirus real-time scanning briefly locking the freshly-written tablespace files) —
+// it reliably works within a couple of retries, so failure here just means "try spawning again"
+// rather than a real problem with the install.
+function trySpawnMysqldOnce(mysqldExe, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(mysqldExe, [
+      `--datadir=${WOW_MYSQL_DATA_DIR}`,
+      `--basedir=${WOW_DEPS.mysql.installDir}`,
+      `--port=${WOW_MYSQL_PORT}`,
+      '--bind-address=127.0.0.1',
+    ], { stdio: 'ignore', detached: true });
+    proc.unref();
+    let exited = false;
+    proc.once('exit', () => { exited = true; });
+    proc.once('error', () => { exited = true; });
+    setTimeout(() => (exited ? reject(new Error('mysqld a quitté immédiatement')) : resolve(proc)), timeoutMs);
+  });
+}
+
+let wowMysqlEnsurePromise = null;
+
+async function ensureWowMysqlRunning(rt) {
+  if (await checkPortOpen(WOW_MYSQL_PORT, 500)) return true;
+  if (wowMysqlEnsurePromise) return wowMysqlEnsurePromise;
+
+  wowMysqlEnsurePromise = (async () => {
+    const mysqldExe = path.join(WOW_DEPS.mysql.installDir, 'bin', 'mysqld.exe');
+    const mysqlCliExe = path.join(WOW_DEPS.mysql.installDir, 'bin', 'mysql.exe');
+    if (!fs.existsSync(mysqldExe)) {
+      pushLog(rt, "[Dashboard] MySQL n'est pas encore installé — compile un serveur WoW au moins une fois pour le récupérer.", 'error');
+      return false;
+    }
+
+    fs.mkdirSync(WOW_MYSQL_DATA_DIR, { recursive: true });
+    const alreadyInitialized = fs.existsSync(path.join(WOW_MYSQL_DATA_DIR, 'mysql'));
+    if (!alreadyInitialized) {
+      pushLog(rt, '[Dashboard] Initialisation de la base MySQL locale (une seule fois, ~20s)...', 'info');
+      try {
+        await runCommandAsync(mysqldExe, [`--datadir=${WOW_MYSQL_DATA_DIR}`, `--basedir=${WOW_DEPS.mysql.installDir}`, '--initialize-insecure']);
+      } catch (e) {
+        pushLog(rt, `[Dashboard] Échec de l'initialisation de MySQL : ${e.message}`, 'error');
+        return false;
+      }
+    }
+
+    pushLog(rt, `[Dashboard] Démarrage de MySQL (127.0.0.1:${WOW_MYSQL_PORT})...`, 'info');
+    let mysqlProc = null;
+    for (let attempt = 1; attempt <= 4 && !mysqlProc; attempt++) {
+      try {
+        mysqlProc = await trySpawnMysqldOnce(mysqldExe, 4000);
+      } catch (e) {
+        pushLog(rt, `[Dashboard] MySQL n'a pas démarré (essai ${attempt}/4), nouvelle tentative...`, 'warn');
+      }
+    }
+    if (!mysqlProc) {
+      pushLog(rt, '[Dashboard] Impossible de démarrer MySQL après plusieurs tentatives.', 'error');
+      return false;
+    }
+
+    if (!alreadyInitialized) {
+      try {
+        await runCommandAsync(mysqlCliExe, [
+          '-h', '127.0.0.1', '-P', String(WOW_MYSQL_PORT), '-u', 'root', '-e',
+          "CREATE DATABASE IF NOT EXISTS acore_auth DEFAULT CHARACTER SET utf8mb4;" +
+          "CREATE DATABASE IF NOT EXISTS acore_world DEFAULT CHARACTER SET utf8mb4;" +
+          "CREATE DATABASE IF NOT EXISTS acore_characters DEFAULT CHARACTER SET utf8mb4;" +
+          "CREATE USER IF NOT EXISTS 'acore'@'127.0.0.1' IDENTIFIED BY 'acore';" +
+          "GRANT ALL PRIVILEGES ON acore_auth.* TO 'acore'@'127.0.0.1';" +
+          "GRANT ALL PRIVILEGES ON acore_world.* TO 'acore'@'127.0.0.1';" +
+          "GRANT ALL PRIVILEGES ON acore_characters.* TO 'acore'@'127.0.0.1';" +
+          "FLUSH PRIVILEGES;",
+        ]);
+        pushLog(rt, "[Dashboard] Bases acore_auth / acore_world / acore_characters créées (utilisateur 'acore'/'acore').", 'info');
+      } catch (e) {
+        pushLog(rt, `[Dashboard] Échec de la création des bases MySQL : ${e.message}`, 'error');
+      }
+    }
+
+    pushLog(rt, '[Dashboard] MySQL prêt.', 'info');
+    return true;
+  })();
+
+  try {
+    return await wowMysqlEnsurePromise;
+  } finally {
+    wowMysqlEnsurePromise = null;
+  }
+}
+
+// ---- WoW automated build orchestration ----
+const wowBuilds = new Map(); // buildId -> { id, serverDir, versionKey, cmakeExe, status, log }
+
+function wowBuildLog(build, line, kind = 'info') {
+  const entry = { line, kind, t: Date.now() };
+  build.log.push(entry);
+  if (build.log.length > MAX_LOG_LINES) build.log.shift();
+  io.emit('wowBuild:line', { buildId: build.id, entry });
+}
+
+function wowBuildStatus(build, status) {
+  build.status = status;
+  io.emit('wowBuild:status', { buildId: build.id, status });
+}
+
+function runWowBuildStep(build, command, args, cwd, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    wowBuildLog(build, `> ${command} ${args.join(' ')}`, 'command');
+    const proc = spawn(command, args, { cwd });
+    let timedOut = false;
+    const timer = timeoutMs ? setTimeout(() => {
+      timedOut = true;
+      wowBuildLog(build, `[Dashboard] Délai dépassé (${Math.round(timeoutMs / 1000)}s), arrêt du processus...`, 'warn');
+      proc.kill();
+    }, timeoutMs) : null;
+    const onOut = (kind) => (chunk) => chunk.toString().split(/\r?\n/).forEach((l) => { if (l) wowBuildLog(build, l, kind); });
+    proc.stdout.on('data', onOut('info'));
+    proc.stderr.on('data', onOut('error'));
+    proc.on('error', (err) => { if (timer) clearTimeout(timer); reject(err); });
+    proc.on('exit', (code) => {
+      if (timer) clearTimeout(timer);
+      if (timedOut) { reject(new Error('délai dépassé — une élévation administrateur est probablement requise')); return; }
+      code === 0 ? resolve() : reject(new Error(`${command} a échoué (code ${code}).`));
+    });
+  });
+}
+
+function downloadWowDep(build, url, destPath) {
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  wowBuildLog(build, `[Dashboard] Téléchargement : ${url}`, 'info');
+  return runWowBuildStep(build, 'curl', ['-L', '--fail', '-o', destPath, url], path.dirname(destPath));
+}
+
+// vcpkg is a plain CLI tool (bootstrap script + `vcpkg install`), so unlike the old Boost/
+// OpenSSL GUI installers, there's no silent-mode guesswork or elevation prompt to worry about.
+// It's bootstrapped once and shared across every WoW server (see VCPKG_DIR).
+async function ensureVcpkgDeps(build) {
+  const vcpkgExe = path.join(VCPKG_DIR, 'vcpkg.exe');
+  if (!fs.existsSync(vcpkgExe)) {
+    if (!fs.existsSync(path.join(VCPKG_DIR, '.git'))) {
+      wowBuildLog(build, '[Dashboard] Téléchargement de vcpkg...', 'info');
+      await runWowBuildStep(build, 'git', ['clone', '--depth', '1', 'https://github.com/microsoft/vcpkg.git', VCPKG_DIR], __dirname);
+    }
+    wowBuildLog(build, '[Dashboard] Initialisation de vcpkg...', 'info');
+    await runWowBuildStep(build, path.join(VCPKG_DIR, 'bootstrap-vcpkg.bat'), ['-disableMetrics'], VCPKG_DIR);
+  }
+  wowBuildLog(build, `[Dashboard] Installation de Boost et OpenSSL via vcpkg dans ${VCPKG_DIR} (peut prendre 30 à 60 minutes la première fois, réutilisé ensuite pour tous tes serveurs WoW)...`, 'info');
+  const ports = [...VCPKG_BOOST_PORTS, 'openssl'].map((p) => `${p}:${VCPKG_TRIPLET}`);
+  // AzerothCore's own code hard-requires a standalone, loadable "legacy.dll" OpenSSL provider
+  // module next to the exe (OSSL_PROVIDER_load("legacy") at runtime) — something a fully static
+  // OpenSSL build never produces, since providers are always separate loadable modules even
+  // when libssl/libcrypto themselves are linked statically. So the default (dynamic) triplet's
+  // openssl port is installed too, purely to harvest that one file from its bin/ folder.
+  ports.push('openssl:x64-windows');
+  await runWowBuildStep(build, vcpkgExe, ['install', ...ports], VCPKG_DIR, 90 * 60 * 1000);
+}
+
+// MySQL has no auto-fetch mechanism in AzerothCore's CMake either, so this downloads and
+// extracts it (precompiled dev libraries only, no installer) before configure runs.
+async function installMissingWowDeps(build) {
+  const depsDir = path.join(build.serverDir, '_build', 'deps-download');
+
+  // `vcpkg install` is idempotent — it only (re)builds ports that are missing or out of date —
+  // so it's always run rather than gated on a "looks installed" heuristic. A prior partial/
+  // different attempt can leave behind a shared header (boost/version.hpp) without every
+  // specific library this build actually needs (e.g. boost-process), which a heuristic based
+  // on that one file can't tell apart from a truly complete install.
+  await ensureVcpkgDeps(build);
+
+  if (!build.mysqlRoot) {
+    wowBuildLog(build, "[Dashboard] MySQL introuvable — téléchargement et extraction (bibliothèques de compilation uniquement)...", 'info');
+    const zipPath = path.join(depsDir, WOW_DEPS.mysql.zipName);
+    await downloadWowDep(build, WOW_DEPS.mysql.url, zipPath);
+    const extractRoot = path.dirname(WOW_DEPS.mysql.installDir);
+    fs.mkdirSync(extractRoot, { recursive: true });
+    await runWowBuildStep(build, 'powershell.exe', [
+      '-NoProfile', '-Command', `Expand-Archive -Path '${zipPath}' -DestinationPath '${extractRoot}' -Force`,
+    ], depsDir);
+    const extractedDir = path.join(extractRoot, WOW_DEPS.mysql.extractedName);
+    if (fs.existsSync(extractedDir) && !fs.existsSync(WOW_DEPS.mysql.installDir)) {
+      fs.renameSync(extractedDir, WOW_DEPS.mysql.installDir);
+    }
+    if (!fs.existsSync(path.join(WOW_DEPS.mysql.installDir, 'include', 'mysql.h'))) {
+      throw new Error('En-têtes MySQL introuvables après extraction.');
+    }
+    build.mysqlRoot = WOW_DEPS.mysql.installDir;
+    wowBuildLog(build, `[Dashboard] MySQL installé dans ${build.mysqlRoot} (bibliothèques uniquement — le service de base de données n'est pas démarré).`, 'info');
+  }
+}
+
+async function runWowBuild(build) {
+  const repo = WOW_BUILD_REPOS[build.versionKey];
+  const workDir = path.join(build.serverDir, '_build');
+  const srcDir = path.join(workDir, 'src');
+  const binDir = path.join(workDir, 'bin');
+
+  try {
+    wowBuildStatus(build, 'running');
+    fs.mkdirSync(build.serverDir, { recursive: true });
+
+    await installMissingWowDeps(build);
+
+    if (!fs.existsSync(path.join(srcDir, '.git'))) {
+      wowBuildLog(build, `[Dashboard] Téléchargement des sources : ${repo.url}`, 'info');
+      fs.mkdirSync(workDir, { recursive: true });
+      await runWowBuildStep(build, 'git', ['clone', '--depth', '1', '--branch', repo.branch, repo.url, srcDir], workDir);
+    } else {
+      wowBuildLog(build, '[Dashboard] Sources déjà présentes, clonage sauté.', 'info');
+    }
+
+    wowBuildLog(build, '[Dashboard] Configuration CMake...', 'info');
+    const configureArgs = [
+      '-S', srcDir, '-B', binDir, '-A', 'x64', '-DTOOLS=0', '-DSCRIPTS=static',
+      `-DCMAKE_TOOLCHAIN_FILE=${path.join(VCPKG_DIR, 'scripts', 'buildsystems', 'vcpkg.cmake')}`,
+      `-DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET}`,
+    ];
+    if (build.mysqlRoot && build.mysqlRoot !== 'PATH') configureArgs.push(`-DMYSQL_ROOT_DIR=${build.mysqlRoot}`);
+    await runWowBuildStep(build, build.cmakeExe, configureArgs, workDir);
+
+    wowBuildLog(build, '[Dashboard] Compilation en cours (authserver + worldserver)... cela peut prendre 20 à 60 minutes.', 'info');
+    await runWowBuildStep(build, build.cmakeExe, [
+      '--build', binDir, '--config', 'RelWithDebInfo', '--target', 'authserver', '--target', 'worldserver', '--', '/m',
+    ], workDir);
+
+    wowBuildLog(build, '[Dashboard] Copie des exécutables dans le dossier du serveur...', 'info');
+    const exeFiles = findFilesRecursive(binDir, new Set(['worldserver.exe', 'authserver.exe']));
+    if (exeFiles.length === 0) throw new Error('Compilation terminée mais aucun exécutable trouvé dans le dossier de build.');
+
+    const copiedDirs = new Set();
+    for (const exe of exeFiles) {
+      const dir = path.dirname(exe);
+      if (copiedDirs.has(dir)) continue;
+      copiedDirs.add(dir);
+      for (const f of fs.readdirSync(dir)) {
+        const src = path.join(dir, f);
+        if (fs.statSync(src).isFile()) fs.copyFileSync(src, path.join(build.serverDir, f));
+      }
+      const configsDir = path.join(dir, 'configs');
+      if (fs.existsSync(configsDir)) fs.cpSync(configsDir, path.join(build.serverDir, 'configs'), { recursive: true });
+    }
+
+    // AzerothCore ships only *.conf.dist templates — it refuses to start without the real
+    // *.conf file, which admins normally create by hand. Bootstrapped here with the untouched
+    // defaults (only if the real file doesn't already exist, so a re-run never clobbers
+    // settings someone already customized).
+    const serverConfigsDir = path.join(build.serverDir, 'configs');
+    for (const name of ['authserver', 'worldserver']) {
+      const dist = path.join(serverConfigsDir, `${name}.conf.dist`);
+      const real = path.join(serverConfigsDir, `${name}.conf`);
+      if (fs.existsSync(dist) && !fs.existsSync(real)) fs.copyFileSync(dist, real);
+    }
+
+    // libmysql.lib is only the *import* library used at link time — the actual libmysql.dll
+    // runtime dependency (and libmysql.dll's own dependency on MySQL's bundled OpenSSL DLLs)
+    // doesn't come from the build output at all, so it has to be copied in separately or the
+    // exe fails to start with STATUS_DLL_NOT_FOUND.
+    const libmysqlDll = path.join(WOW_DEPS.mysql.installDir, 'lib', 'libmysql.dll');
+    if (fs.existsSync(libmysqlDll)) fs.copyFileSync(libmysqlDll, path.join(build.serverDir, 'libmysql.dll'));
+    const mysqlBinDir = path.join(WOW_DEPS.mysql.installDir, 'bin');
+    try {
+      for (const f of fs.readdirSync(mysqlBinDir)) {
+        if (/^lib(ssl|crypto)-.*\.dll$/i.test(f)) fs.copyFileSync(path.join(mysqlBinDir, f), path.join(build.serverDir, f));
+      }
+    } catch (e) {}
+
+    // See the comment on "openssl:x64-windows" in ensureVcpkgDeps: this is the one file
+    // that build produces, needed at runtime by AzerothCore's own OSSL_PROVIDER_load("legacy").
+    const legacyDll = path.join(VCPKG_DIR, 'installed', 'x64-windows', 'bin', 'legacy.dll');
+    if (fs.existsSync(legacyDll)) fs.copyFileSync(legacyDll, path.join(build.serverDir, 'legacy.dll'));
+
+    wowBuildLog(build, "[Dashboard] Terminé : worldserver.exe / authserver.exe installés dans le dossier du serveur.", 'info');
+    wowBuildStatus(build, 'done');
+  } catch (e) {
+    wowBuildLog(build, `[Dashboard] Échec de la compilation : ${e.message}`, 'error');
+    wowBuildStatus(build, 'error');
+  }
+}
+
+async function startServerRuntime(rt) {
   const cfg = rt.cfg;
   if (rt.process) {
     pushLog(rt, '[Dashboard] Le serveur tourne déjà.', 'warn');
@@ -252,6 +770,16 @@ function startServerRuntime(rt) {
       pushLog(rt, `[Dashboard] Fichier introuvable : ${f}`, 'error');
       return;
     }
+  }
+
+  if (cfg.game === 'wow') {
+    const mysqlReady = await ensureWowMysqlRunning(rt);
+    if (!mysqlReady) {
+      pushLog(rt, '[Dashboard] Démarrage annulé : MySQL est requis pour le monde WoW.', 'error');
+      return;
+    }
+    // The world/auth processes may have been requested to stop while MySQL was starting.
+    if (rt.process) return;
   }
 
   pushLog(rt, `[Dashboard] Démarrage : ${spec.command} ${spec.args.join(' ')}`, 'info');
@@ -287,6 +815,8 @@ function startServerRuntime(rt) {
     emitPlayers(rt);
     rt.tps = null;
     io.emit('tps', { id: cfg.id, tps: null });
+    // The auth server is only useful while the world is up, so it follows the world's lifecycle.
+    if (rt.authProcess) forceKillRuntime(rt, rt.authProcess.pid);
     broadcastStatus(rt);
     if (rt.pendingRestart) {
       rt.pendingRestart = false;
@@ -300,6 +830,8 @@ function startServerRuntime(rt) {
     rt.status = 'stopped';
     broadcastStatus(rt);
   });
+
+  if (cfg.game === 'wow') startWowAuthProcess(rt);
 }
 
 function stopServerRuntime(rt) {
@@ -316,6 +848,7 @@ function stopServerRuntime(rt) {
   const stopCmd = rt.cfg.game === 'minecraft' ? 'stop' : 'quit';
   pushLog(rt, `[Dashboard] Envoi de la commande "${stopCmd}"...`, 'info');
   rt.process.stdin.write(stopCmd + '\n');
+  if (rt.authProcess && rt.authProcess.stdin.writable) rt.authProcess.stdin.write(stopCmd + '\n');
 
   const pid = rt.process.pid;
   setTimeout(() => {
@@ -323,6 +856,7 @@ function stopServerRuntime(rt) {
       pushLog(rt, '[Dashboard] Le serveur ne répond pas, arrêt forcé.', 'warn');
       forceKillRuntime(rt, pid);
     }
+    if (rt.authProcess) forceKillRuntime(rt, rt.authProcess.pid);
   }, rt.cfg.stopTimeoutMs || 30000);
 }
 
@@ -362,6 +896,7 @@ function killServerRuntime(rt) {
   }
   pushLog(rt, '[Dashboard] KILL forcé du processus.', 'error');
   forceKillRuntime(rt, rt.process.pid);
+  if (rt.authProcess) forceKillRuntime(rt, rt.authProcess.pid);
 }
 
 function playerCommandRuntime(rt, player, action) {
@@ -556,6 +1091,14 @@ async function pollStats() {
 }
 setInterval(pollStats, 2000);
 
+// MySQL is a single shared instance (not per-runtime), so its status is polled and broadcast
+// once here rather than duplicated inside pollStats for every WoW server.
+let wowMysqlLastOpen = false;
+setInterval(async () => {
+  wowMysqlLastOpen = await checkPortOpen(WOW_MYSQL_PORT, 400);
+  io.emit('wowMysqlStatus', { open: wowMysqlLastOpen });
+}, 5000);
+
 // ---- Server registry management ----
 function publicConfig(cfg) {
   return {
@@ -570,7 +1113,9 @@ function publicConfig(cfg) {
     maxRam: cfg.maxRam,
     extraJavaArgs: cfg.extraJavaArgs || [],
     exePath: cfg.exePath,
+    authExePath: cfg.authExePath || null,
     launchArgs: cfg.launchArgs || [],
+    wowVersion: cfg.wowVersion || null,
     stopTimeoutMs: cfg.stopTimeoutMs,
     limits: cfg.limits,
     icon: cfg.icon || null,
@@ -579,8 +1124,12 @@ function publicConfig(cfg) {
 }
 
 function createServer(payload = {}) {
-  const name = (payload.name || '').trim();
   const game = VALID_GAMES.has(payload.game) ? payload.game : 'minecraft';
+  let name = (payload.name || '').trim();
+  // WoW creation only asks for the folder, so fall back to its name rather than blocking.
+  if (!name && game === 'wow' && payload.serverDir) {
+    name = path.basename(path.resolve(payload.serverDir.trim()));
+  }
   if (!name || !payload.serverDir) return { error: 'Nom et dossier serveur requis.' };
 
   let id = slugify(name);
@@ -589,6 +1138,7 @@ function createServer(payload = {}) {
 
   const isMinecraft = game === 'minecraft';
   const defaults = GAME_DEFAULTS[game] || {};
+  const wowExe = game === 'wow' ? detectWowExecutables(payload.serverDir) : null;
 
   const cfg = {
     id,
@@ -601,8 +1151,10 @@ function createServer(payload = {}) {
     minRam: isMinecraft ? (payload.minRam || '1G') : null,
     maxRam: isMinecraft ? (payload.maxRam || '4G') : null,
     extraJavaArgs: isMinecraft ? [] : [],
-    exePath: isMinecraft ? null : (payload.exePath || defaults.exePath || ''),
+    exePath: isMinecraft ? null : (game === 'wow' ? (wowExe.worldExe || defaults.exePath || '') : (payload.exePath || defaults.exePath || '')),
+    authExePath: game === 'wow' ? (wowExe.authExe || null) : null,
     launchArgs: isMinecraft ? [] : (defaults.launchArgs || []),
+    wowVersion: game === 'wow' ? (WOW_VERSIONS.has(payload.wowVersion) ? payload.wowVersion : DEFAULT_WOW_VERSION) : null,
     stopTimeoutMs: 30000,
     limits: { cpuMaxPercent: 100, ramMaxMB: null, storageMaxGB: null },
     pinned: false,
@@ -644,6 +1196,7 @@ function deleteServer(id) {
   const rt = runtimes.get(id);
   if (!rt) return;
   if (rt.process) forceKillRuntime(rt);
+  if (rt.authProcess) forceKillRuntime(rt, rt.authProcess.pid);
   runtimes.delete(id);
   saveServerDefs();
   broadcastServerList();
@@ -655,11 +1208,12 @@ function updateServerSettings(id, patch = {}) {
   const cfg = rt.cfg;
   const editable = [
     'name', 'gamePort', 'jarName', 'javaPath', 'minRam', 'maxRam',
-    'extraJavaArgs', 'exePath', 'launchArgs', 'stopTimeoutMs', 'icon', 'color',
+    'extraJavaArgs', 'exePath', 'authExePath', 'launchArgs', 'stopTimeoutMs', 'icon', 'color',
   ];
   for (const key of editable) {
     if (patch[key] !== undefined) cfg[key] = patch[key];
   }
+  if (cfg.game === 'wow' && WOW_VERSIONS.has(patch.wowVersion)) cfg.wowVersion = patch.wowVersion;
   if (patch.limits) {
     cfg.limits = { ...cfg.limits, ...patch.limits };
   }
@@ -759,10 +1313,40 @@ function writeConfigFile(rt, filename, content) {
 // ---- Socket.io wiring ----
 io.on('connection', (socket) => {
   socket.emit('servers:list', [...runtimes.values()].map(summarize));
+  socket.emit('wowMysqlStatus', { open: wowMysqlLastOpen });
 
   socket.on('servers:create', (payload, ack) => {
     const result = createServer(payload || {});
     if (typeof ack === 'function') ack(result);
+  });
+
+  socket.on('wow:build:start', ({ serverDir, versionKey } = {}, ack) => {
+    if (typeof ack !== 'function') return;
+    if (!serverDir) { ack({ error: 'Dossier du serveur requis.' }); return; }
+    if (!WOW_BUILD_REPOS[versionKey]) {
+      ack({ error: 'Compilation automatique disponible uniquement pour Wrath of the Lich King (AzerothCore) pour le moment.' });
+      return;
+    }
+    const existing = [...wowBuilds.values()].find((b) => b.serverDir === serverDir && b.status === 'running');
+    if (existing) { ack({ buildId: existing.id }); return; }
+
+    const prereq = checkWowBuildPrerequisites();
+    if (!prereq.ok) { ack({ error: `Outils manquants : ${prereq.missing.join(', ')}` }); return; }
+
+    const build = {
+      id: randomUUID(), serverDir, versionKey,
+      cmakeExe: prereq.cmakeExe, mysqlRoot: prereq.mysqlRoot,
+      status: 'pending', log: [],
+    };
+    wowBuilds.set(build.id, build);
+    ack({ buildId: build.id });
+    runWowBuild(build);
+  });
+
+  socket.on('wow:build:join', ({ buildId } = {}) => {
+    const build = wowBuilds.get(buildId);
+    if (!build) return;
+    socket.emit('wowBuild:history', { buildId, history: build.log, status: build.status });
   });
 
   socket.on('servers:delete', ({ id } = {}) => deleteServer(id));
@@ -781,6 +1365,7 @@ io.on('connection', (socket) => {
     socket.emit('config', { id, config: publicConfig(rt.cfg) });
     socket.emit('players', { id, players: rt.players });
     socket.emit('tps', { id, tps: rt.tps });
+    if (rt.cfg.game === 'wow') socket.emit('authStatus', { id, status: rt.authProcess ? 'running' : 'stopped' });
     if (rt.eulaRequired) socket.emit('eulaRequired', { id, required: true });
   });
 

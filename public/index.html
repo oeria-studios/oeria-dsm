@@ -84,6 +84,14 @@
           <span class="dot" id="statusDot"></span>
           <span id="statusText">Connexion...</span>
         </span>
+        <span class="status-badge view-hidden" id="authStatusBadge" title="Serveur d'authentification">
+          <span class="dot" id="authStatusDot"></span>
+          <span id="authStatusText">Auth</span>
+        </span>
+        <span class="status-badge view-hidden" id="dbStatusBadge" title="Base de données MySQL">
+          <span class="dot" id="dbStatusDot"></span>
+          <span id="dbStatusText">MySQL</span>
+        </span>
         <span class="tps-badge" id="tpsBadge">
           <i class="bi bi-speedometer2"></i>
           <span class="tps-label">TPS</span>
@@ -322,9 +330,10 @@
                 <option value="palworld">Palworld</option>
                 <option value="fivem">FiveM</option>
                 <option value="7dtd">7 Days to Die</option>
+                <option value="wow">World of Warcraft</option>
               </select>
             </label>
-            <label>Port
+            <label id="newServerPortField">Port
               <input type="number" id="newServerPort" placeholder="25565">
             </label>
           </div>
@@ -354,6 +363,31 @@
               <input type="text" id="newServerExe" placeholder="srcds.exe">
             </label>
           </div>
+
+          <div id="newServerWowFields" class="settings-group view-hidden">
+            <label>Version de WoW
+              <select id="newServerWowVersion">
+                <option value="vanilla">Vanilla / Classic (1.12)</option>
+                <option value="tbc">The Burning Crusade (2.4.3)</option>
+                <option value="wotlk" selected>Wrath of the Lich King (3.3.5a)</option>
+                <option value="cata">Cataclysm (4.3.4)</option>
+                <option value="mop">Mists of Pandaria (5.4.8)</option>
+                <option value="wod">Warlords of Draenor (6.2.4)</option>
+                <option value="legion">Legion (7.3.5)</option>
+                <option value="bfa">Battle for Azeroth (8.3.7)</option>
+                <option value="shadowlands">Shadowlands (9.2.7)</option>
+                <option value="dragonflight">Dragonflight (10.2.x)</option>
+                <option value="thewarwithin">The War Within (11.x)</option>
+              </select>
+            </label>
+            <p class="settings-hint">Le dashboard détecte automatiquement worldserver.exe/authserver.exe (ou mangosd.exe/realmd.exe) dans le dossier et lance les deux ensemble.</p>
+
+            <button type="button" class="pill pill-ghost" id="btnWowBuild">
+              <i class="bi bi-cloud-download-fill pill-icon"></i> Compiler et installer (AzerothCore)
+            </button>
+            <p class="settings-hint" id="wowBuildHint">Nécessite Git, CMake et Visual Studio (Desktop C++) déjà installés. Clone AzerothCore et compile authserver/worldserver directement dans le dossier ci-dessus — compte 20 à 60 minutes.</p>
+            <p class="settings-hint wow-build-note view-hidden" id="wowBuildVersionNote">Compilation automatique disponible uniquement pour Wrath of the Lich King pour l'instant — pour les autres versions, il faut compiler/installer manuellement le core correspondant.</p>
+          </div>
         </div>
 
         <div class="settings-col">
@@ -380,6 +414,20 @@
       <div class="modal-actions">
         <button type="button" class="pill pill-ghost" id="createServerCancel">Annuler</button>
         <button type="submit" form="createServerForm" class="pill pill-start">Créer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="wowBuildModal">
+    <div class="modal modal-wow-build">
+      <h3><i class="bi bi-hammer"></i> Compilation AzerothCore</h3>
+      <p class="wow-build-status" id="wowBuildStatusText">Démarrage...</p>
+      <div class="console wow-build-console" id="wowBuildConsole"></div>
+      <div class="modal-actions">
+        <div class="wow-build-progress" id="wowBuildProgress">
+          <div class="wow-build-progress-fill" id="wowBuildProgressFill"></div>
+        </div>
+        <button type="button" class="pill pill-ghost" id="wowBuildClose">Fermer</button>
       </div>
     </div>
   </div>
@@ -424,6 +472,27 @@
             </label>
             <label>Arguments de démarrage
               <input type="text" id="setLaunchArgs" placeholder="-console -game garrysmod">
+            </label>
+          </div>
+
+          <div id="setWowFields" class="settings-group view-hidden">
+            <label>Version de WoW
+              <select id="setWowVersion">
+                <option value="vanilla">Vanilla / Classic (1.12)</option>
+                <option value="tbc">The Burning Crusade (2.4.3)</option>
+                <option value="wotlk">Wrath of the Lich King (3.3.5a)</option>
+                <option value="cata">Cataclysm (4.3.4)</option>
+                <option value="mop">Mists of Pandaria (5.4.8)</option>
+                <option value="wod">Warlords of Draenor (6.2.4)</option>
+                <option value="legion">Legion (7.3.5)</option>
+                <option value="bfa">Battle for Azeroth (8.3.7)</option>
+                <option value="shadowlands">Shadowlands (9.2.7)</option>
+                <option value="dragonflight">Dragonflight (10.2.x)</option>
+                <option value="thewarwithin">The War Within (11.x)</option>
+              </select>
+            </label>
+            <label>Exécutable du serveur d'authentification
+              <input type="text" id="setWowAuthExe" placeholder="authserver.exe">
             </label>
           </div>
 
