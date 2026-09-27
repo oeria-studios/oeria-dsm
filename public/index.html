@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OERIA - DSM</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <button class="theme-toggle theme-toggle-floating" id="themeToggle" title="Changer de thème">
+    <i class="bi bi-moon-stars-fill" id="themeIcon"></i>
+  </button>
+
+  <div class="app-version-tag">VERSION: 0.1.0 | Copyright (c) 2026 OERIA STUDIOS</div>
+
+  <!-- ==================== HOME VIEW ==================== -->
+  <div id="homeView">
+    <header class="home-topbar">
+      <div class="brand">
+        <img src="logo.png" alt="OERIA-DSM" class="brand-logo">
+      </div>
+    </header>
+
+    <div class="home-layout">
+      <section class="server-list-panel">
+        <div class="server-search">
+          <i class="bi bi-search"></i>
+          <input type="text" id="serverSearchInput" placeholder="Rechercher un serveur...">
+        </div>
+        <div class="server-list" id="serverGrid">
+          <div class="server-grid-empty" id="serverGridEmpty">Aucun serveur pour le moment.</div>
+        </div>
+
+        <div class="home-create">
+          <button class="pill pill-start" id="btnCreateServer">
+            <i class="bi bi-plus-circle-fill pill-icon"></i> Créer un serveur
+          </button>
+        </div>
+      </section>
+
+      <aside class="home-stats-panel">
+        <div class="home-stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-cpu-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">CPU total</span>
+              <span class="stat-value" id="totalCpuValue">0 %</span>
+            </div>
+          </div>
+        </div>
+        <div class="home-stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-memory"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">RAM totale</span>
+              <span class="stat-value" id="totalRamValue">0 ko</span>
+            </div>
+          </div>
+        </div>
+        <div class="home-stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-hdd-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">Stockage total</span>
+              <span class="stat-value" id="totalDiskValue">0 Go</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ==================== SERVER VIEW ==================== -->
+  <div id="serverView" class="view-hidden">
+    <header class="topbar">
+      <div class="brand">
+        <button class="icon-btn" id="btnHome" title="Retour à l'accueil"><i class="bi bi-arrow-left"></i></button>
+        <div class="brand-icon"><i class="bi bi-joystick" id="serverGameIcon"></i></div>
+        <span class="brand-title" id="serverTitle">—</span>
+        <span class="status-badge" id="statusBadge">
+          <span class="dot" id="statusDot"></span>
+          <span id="statusText">Connexion...</span>
+        </span>
+        <span class="tps-badge" id="tpsBadge">
+          <i class="bi bi-speedometer2"></i>
+          <span class="tps-label">TPS</span>
+          <span class="tps-value" id="tpsValue">--</span>
+        </span>
+        <span class="uptime" id="uptime"></span>
+      </div>
+      <div class="topbar-right">
+        <div class="server-path" id="serverPath"></div>
+        <button class="icon-btn" id="btnFiles" title="Fichiers de configuration">
+          <i class="bi bi-file-earmark-text-fill"></i>
+        </button>
+        <button class="icon-btn" id="btnSettings" title="Paramètres du serveur">
+          <i class="bi bi-gear-fill"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="banner" id="eulaBanner">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <span>Le serveur refuse de démarrer tant que l'EULA n'est pas acceptée.</span>
+      <button id="btnEula">Accepter l'EULA</button>
+    </div>
+
+    <div class="server-layout">
+      <section class="console-panel">
+        <div class="console-header">
+          <span class="dot console-status-dot" id="consoleStatusDot"></span>
+          <i class="bi bi-terminal-fill"></i>
+          <span>Console</span>
+          <div class="console-header-right">
+            <span class="severity-badge error-badge" id="errorBadge" title="Erreurs (clic pour réinitialiser)">
+              <i class="bi bi-x-circle-fill"></i>
+              <span id="errorCount">0</span>
+            </span>
+            <span class="severity-badge warn-badge" id="warnBadge" title="Avertissements (clic pour réinitialiser)">
+              <i class="bi bi-exclamation-triangle-fill"></i>
+              <span id="warnCount">0</span>
+            </span>
+            <button type="button" class="autoscroll-toggle active" id="btnAutoscroll" title="Défilement automatique">
+              <i class="bi bi-arrow-down-circle-fill"></i>
+              <span>Auto-scroll</span>
+            </button>
+            <button type="button" class="icon-btn console-export-btn" id="btnExportLogs" title="Exporter les logs (.txt)">
+              <i class="bi bi-download"></i>
+            </button>
+          </div>
+        </div>
+        <div class="console" id="console"></div>
+        <form id="cmdForm" class="cmd-form">
+          <i class="bi bi-chevron-right cmd-caret"></i>
+          <input type="text" id="cmdInput" placeholder="Entrez votre commande" autocomplete="off">
+          <button type="submit" class="cmd-send"><i class="bi bi-send-fill"></i> <span>Envoyer</span></button>
+        </form>
+      </section>
+
+      <aside class="server-stats-panel">
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">Joueurs</span>
+              <span class="stat-value" id="playersValue">-/-</span>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill players" id="playersBar"></div></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-cpu-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">CPU</span>
+              <span class="stat-value" id="cpuValue">0 %</span>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill cpu" id="cpuBar"></div></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-memory"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">RAM</span>
+              <span class="stat-value" id="ramValue">0 ko</span>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill ram" id="ramBar"></div></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-hdd-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">Dossier serveur</span>
+              <span class="stat-value" id="diskValue">-- Go</span>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill disk" id="diskBar"></div></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-hdd-network-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">Réseau</span>
+              <span class="stat-value" id="networkValue">--</span>
+            </div>
+          </div>
+          <div class="network-status">
+            <span class="dot" id="networkDot"></span>
+            <span id="networkStatusText">--</span>
+          </div>
+        </div>
+      </aside>
+
+      <footer class="action-bar">
+        <button class="pill pill-start" id="btnStart">
+          <i class="bi bi-play-fill pill-icon"></i> Démarrer
+        </button>
+        <button class="pill pill-restart" id="btnRestart">
+          <i class="bi bi-arrow-repeat pill-icon"></i> Redémarrer
+        </button>
+        <button class="pill pill-stop" id="btnStop">
+          <i class="bi bi-stop-fill pill-icon"></i> Arrêter
+        </button>
+        <button class="pill pill-kill" id="btnKill">
+          <i class="bi bi-exclamation-octagon-fill pill-icon"></i> Kill
+        </button>
+        <button class="pill pill-ghost" id="btnEditServer">
+          <i class="bi bi-pencil-fill pill-icon"></i> Modifier
+        </button>
+        <button class="pill pill-ghost" id="btnCopy">
+          <i class="bi bi-controller pill-icon"></i> Copier l'adresse
+        </button>
+      </footer>
+    </div>
+
+    <section class="players-panel" id="playersPanel">
+      <div class="players-header">
+        <i class="bi bi-people-fill"></i>
+        <span>Joueurs connectés</span>
+        <span class="players-count" id="playersCount">0</span>
+      </div>
+      <div class="players-list" id="playersList">
+        <div class="players-empty">Aucun joueur connecté</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ==================== MODALS ==================== -->
+  <div class="modal-overlay" id="logsModal">
+    <div class="modal modal-wide modal-logs">
+      <h3><i class="bi bi-terminal-fill"></i> <span id="logsModalTitle">Logs</span></h3>
+      <div class="console logs-console" id="logsConsole"></div>
+      <div class="modal-actions">
+        <button type="button" class="pill pill-ghost" id="logsExport"><i class="bi bi-download pill-icon"></i> Exporter</button>
+        <button type="button" class="pill pill-ghost" id="logsClose">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="filesModal">
+    <div class="modal modal-files">
+      <h3><i class="bi bi-file-earmark-text-fill"></i> Fichiers de configuration</h3>
+      <div class="files-layout">
+        <div class="files-list-panel">
+          <div class="files-search">
+            <i class="bi bi-search"></i>
+            <input type="text" id="filesSearchInput" placeholder="Rechercher un fichier...">
+          </div>
+          <div class="files-list" id="filesList"></div>
+        </div>
+        <div class="files-editor">
+          <div class="files-editor-header" id="filesCurrentName">Sélectionne un fichier</div>
+          <div class="code-editor" id="codeEditor">
+            <div class="code-gutter" id="codeGutter"></div>
+            <div class="code-content">
+              <div class="code-error-line" id="codeErrorLine"></div>
+              <div class="code-highlight" id="codeHighlight"></div>
+              <textarea id="filesEditorArea" class="code-textarea" spellcheck="false" disabled></textarea>
+            </div>
+          </div>
+          <div class="files-editor-footer">
+            <span class="files-status" id="filesStatus"></span>
+            <button type="button" class="pill pill-start" id="filesSave" disabled>Enregistrer</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="pill pill-ghost" id="filesClose">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="killModal">
+    <div class="modal modal-danger">
+      <h3><i class="bi bi-exclamation-octagon-fill"></i> Forcer l'arrêt du serveur ?</h3>
+      <p>Le kill coupe immédiatement le processus sans sauvegarde propre. Le monde peut perdre des données récentes.</p>
+      <div class="modal-actions">
+        <button class="pill pill-ghost" id="killCancel">Annuler</button>
+        <button class="pill pill-kill" id="killConfirm">Confirmer le kill</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal modal-danger">
+      <h3><i class="bi bi-trash-fill"></i> Supprimer ce serveur ?</h3>
+      <p>Le serveur sera retiré du dashboard (les fichiers du dossier ne sont pas supprimés).</p>
+      <div class="modal-actions">
+        <button class="pill pill-ghost" id="deleteCancel">Annuler</button>
+        <button class="pill pill-kill" id="deleteConfirm">Supprimer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="createServerModal">
+    <div class="modal modal-settings">
+      <h3><i class="bi bi-plus-circle-fill"></i> Créer un serveur</h3>
+      <form id="createServerForm" class="settings-form settings-form-columns">
+        <div class="settings-col">
+          <label>Nom du serveur
+            <input type="text" id="newServerName" placeholder="Mon serveur">
+          </label>
+          <div class="settings-row">
+            <label>Jeu
+              <select id="newServerGame">
+                <option value="minecraft">Minecraft</option>
+                <option value="gmod">Garry's Mod</option>
+                <option value="cs2">Counter-Strike 2</option>
+                <option value="valheim">Valheim</option>
+                <option value="vintagestory">Vintage Story</option>
+                <option value="rust">Rust</option>
+                <option value="projectzomboid">Project Zomboid</option>
+                <option value="palworld">Palworld</option>
+                <option value="fivem">FiveM</option>
+                <option value="7dtd">7 Days to Die</option>
+              </select>
+            </label>
+            <label>Port
+              <input type="number" id="newServerPort" placeholder="25565">
+            </label>
+          </div>
+          <label>Dossier du serveur
+            <input type="text" id="newServerDir" placeholder="D:\Serveurs\MonServeur">
+          </label>
+
+          <div id="newServerMcFields" class="settings-group">
+            <label>Nom du fichier .jar
+              <input type="text" id="newServerJar" placeholder="server.jar">
+            </label>
+            <label>Chemin Java (version)
+              <input type="text" id="newServerJava" placeholder="C:\...\java.exe">
+            </label>
+            <div class="settings-row">
+              <label>RAM min
+                <input type="text" id="newServerMinRam" placeholder="1G">
+              </label>
+              <label>RAM max
+                <input type="text" id="newServerMaxRam" placeholder="4G">
+              </label>
+            </div>
+          </div>
+
+          <div id="newServerGmodFields" class="settings-group view-hidden">
+            <label>Exécutable
+              <input type="text" id="newServerExe" placeholder="srcds.exe">
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-col">
+          <h4>Apparence</h4>
+          <div class="settings-row">
+            <label>Icône
+              <input type="text" id="newServerIcon" placeholder="joystick">
+            </label>
+            <label>Couleur
+              <input type="color" id="newServerColor" value="#1f6fc0">
+            </label>
+          </div>
+          <div class="icon-picker-grid" id="newServerIconGrid"></div>
+          <div class="icon-preview">
+            <div class="stat-icon" id="newServerIconPreview" style="background:#1f6fc0"><i class="bi bi-joystick"></i></div>
+            <span>Aperçu</span>
+          </div>
+
+          <p class="settings-hint">Le dossier doit déjà contenir les fichiers du serveur (jar / exécutable) — la création ici ne fait qu'enregistrer le serveur dans le dashboard.</p>
+          <p class="form-error" id="createServerError"></p>
+        </div>
+      </form>
+
+      <div class="modal-actions">
+        <button type="button" class="pill pill-ghost" id="createServerCancel">Annuler</button>
+        <button type="submit" form="createServerForm" class="pill pill-start">Créer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal modal-settings">
+      <h3><i class="bi bi-gear-fill"></i> Paramètres du serveur</h3>
+      <form id="settingsForm" class="settings-form settings-form-columns">
+        <div class="settings-col">
+          <div class="settings-row">
+            <label>Nom
+              <input type="text" id="setName">
+            </label>
+            <label>Port
+              <input type="number" id="setPort">
+            </label>
+          </div>
+
+          <div id="setMcFields" class="settings-group">
+            <label>Nom du fichier .jar
+              <input type="text" id="setJar">
+            </label>
+            <label>Chemin Java (version)
+              <input type="text" id="setJava">
+            </label>
+            <div class="settings-row">
+              <label>RAM min
+                <input type="text" id="setMinRam">
+              </label>
+              <label>RAM max
+                <input type="text" id="setMaxRam">
+              </label>
+            </div>
+            <label>Arguments Java additionnels
+              <input type="text" id="setExtraArgs" placeholder="-Djava.awt.headless=true">
+            </label>
+          </div>
+
+          <div id="setGmodFields" class="settings-group view-hidden">
+            <label>Exécutable
+              <input type="text" id="setExe">
+            </label>
+            <label>Arguments de démarrage
+              <input type="text" id="setLaunchArgs" placeholder="-console -game garrysmod">
+            </label>
+          </div>
+
+          <h4>Limites des jauges</h4>
+          <div class="settings-row settings-row-4">
+            <label>CPU max (%)
+              <input type="number" id="setCpuMax" placeholder="100">
+            </label>
+            <label>RAM max (Mo)
+              <input type="number" id="setRamMax" placeholder="6144">
+            </label>
+            <label>Stockage max (Go)
+              <input type="number" id="setStorageMax" placeholder="50">
+            </label>
+            <label>Arrêt forcé (s)
+              <input type="number" id="setStopTimeout" placeholder="30">
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-col">
+          <h4>Apparence</h4>
+          <div class="settings-row">
+            <label>Icône
+              <input type="text" id="setIcon">
+            </label>
+            <label>Couleur
+              <input type="color" id="setColor">
+            </label>
+          </div>
+          <div class="icon-picker-grid" id="setIconGrid"></div>
+          <div class="icon-preview">
+            <div class="stat-icon" id="setIconPreview"><i class="bi bi-joystick"></i></div>
+            <span>Aperçu</span>
+          </div>
+        </div>
+      </form>
+
+      <div class="modal-actions">
+        <button type="button" class="pill pill-ghost" id="settingsCancel">Annuler</button>
+        <button type="submit" form="settingsForm" class="pill pill-start">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4/dist/js-yaml.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
