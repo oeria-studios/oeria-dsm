@@ -16,6 +16,9 @@
   <em>Avec cet outil, vous pourrez créer et gérer des serveurs en local sur votre PC.</em>
 </p>
 
+🌐 **Langues / Languages :**
+[Français](README.md) | [English](README.enus.md)
+
 ### 🍃 Lancer le dashboard
 - Étape 1 -> Exécuter windows powershell en administrateur
 - Étape 2 -> taper `cd <chemin d'accès vers le dossier oeria-dsm>`
