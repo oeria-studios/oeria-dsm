@@ -13,7 +13,7 @@
 <h1 align="center">OERIA - Development Server Manager</h1>
 
 <p align="center">
-  <em>Avec cet outil, vous pourrez créer et gérer des serveurs en local sur votre PC.</em>
+  <em>With this tool, you can create and manage servers locally on your PC.</em>
 </p>
 
 🌐 **Languages / Langues :**
