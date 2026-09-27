@@ -35,6 +35,7 @@
 - Palworld
 - FiveM
 - 7 Days to Die
+- World Of Warcraft [ NEW ]
 
 ### 🍬 Features
 - Multi-server management
