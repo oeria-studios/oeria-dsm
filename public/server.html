@@ -1,0 +1,172 @@
+  <div id="serverView" class="view-hidden">
+    <header class="topbar">
+      <div class="brand">
+        <button class="icon-btn" id="btnHome" data-i18n-title="server.backHome" title="Retour à l'accueil"><i class="bi bi-arrow-left"></i></button>
+        <div class="brand-icon"><i class="bi bi-joystick" id="serverGameIcon"></i></div>
+        <span class="brand-title" id="serverTitle">—</span>
+        <span class="status-badge" id="statusBadge">
+          <span class="dot" id="statusDot"></span>
+          <span id="statusText" data-i18n="server.connecting">Connexion...</span>
+        </span>
+        <span class="status-badge view-hidden" id="authStatusBadge" data-i18n-title="server.authTitle" title="Serveur d'authentification">
+          <span class="dot" id="authStatusDot"></span>
+          <span id="authStatusText">Auth</span>
+        </span>
+        <span class="status-badge view-hidden" id="dbStatusBadge" data-i18n-title="server.dbTitle" title="Base de données MySQL">
+          <span class="dot" id="dbStatusDot"></span>
+          <span id="dbStatusText">MySQL</span>
+        </span>
+        <span class="tps-badge" id="tpsBadge">
+          <i class="bi bi-speedometer2"></i>
+          <span class="tps-label">TPS</span>
+          <span class="tps-value" id="tpsValue">--</span>
+        </span>
+        <span class="uptime" id="uptime"></span>
+      </div>
+      <div class="topbar-right">
+        <div class="server-path" id="serverPath"></div>
+        <button class="icon-btn" id="btnFiles" data-i18n-title="server.configFiles" title="Fichiers de configuration">
+          <i class="bi bi-file-earmark-text-fill"></i>
+        </button>
+        <button class="icon-btn" id="btnSettings" data-i18n-title="server.settings" title="Paramètres du serveur">
+          <i class="bi bi-gear-fill"></i>
+        </button>
+        <div class="top-toggles">
+          <button class="theme-toggle lang-toggle-btn" data-i18n-title="topbar.changeLang" title="Changer de langue">
+            <span class="lang-flag"><svg viewBox="0 0 3 2" width="20" height="14"><rect width="1" height="2" x="0" fill="#0055A4"/><rect width="1" height="2" x="1" fill="#FFFFFF"/><rect width="1" height="2" x="2" fill="#EF4135"/></svg></span>
+          </button>
+          <button class="theme-toggle theme-toggle-btn" data-i18n-title="topbar.changeTheme" title="Changer de thème">
+            <i class="bi bi-moon-stars-fill theme-icon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="banner" id="eulaBanner">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <span data-i18n="server.eulaBanner">Le serveur refuse de démarrer tant que l'EULA n'est pas acceptée.</span>
+      <button id="btnEula" data-i18n="server.acceptEula">Accepter l'EULA</button>
+    </div>
+
+    <div class="server-layout">
+      <section class="console-panel">
+        <div class="console-header">
+          <span class="dot console-status-dot" id="consoleStatusDot"></span>
+          <i class="bi bi-terminal-fill"></i>
+          <span data-i18n="server.console">Console</span>
+          <div class="console-header-right">
+            <span class="severity-badge error-badge" id="errorBadge" data-i18n-title="server.errorsTitle" title="Erreurs (clic pour réinitialiser)">
+              <i class="bi bi-x-circle-fill"></i>
+              <span id="errorCount">0</span>
+            </span>
+            <span class="severity-badge warn-badge" id="warnBadge" data-i18n-title="server.warningsTitle" title="Avertissements (clic pour réinitialiser)">
+              <i class="bi bi-exclamation-triangle-fill"></i>
+              <span id="warnCount">0</span>
+            </span>
+            <button type="button" class="autoscroll-toggle active" id="btnAutoscroll" data-i18n-title="server.autoscrollTitle" title="Défilement automatique">
+              <i class="bi bi-arrow-down-circle-fill"></i>
+              <span data-i18n="server.autoscroll">Auto-scroll</span>
+            </button>
+            <button type="button" class="icon-btn console-export-btn" id="btnExportLogs" data-i18n-title="server.exportLogsTitle" title="Exporter les logs (.txt)">
+              <i class="bi bi-download"></i>
+            </button>
+          </div>
+        </div>
+        <div class="console" id="console"></div>
+        <form id="cmdForm" class="cmd-form">
+          <i class="bi bi-chevron-right cmd-caret"></i>
+          <input type="text" id="cmdInput" data-i18n-placeholder="server.cmdPlaceholder" placeholder="Entrez votre commande" autocomplete="off">
+          <button type="submit" class="cmd-send"><i class="bi bi-send-fill"></i> <span data-i18n="server.send">Envoyer</span></button>
+        </form>
+      </section>
+
+      <aside class="server-stats-panel">
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label" data-i18n="server.players">Joueurs</span>
+              <span class="stat-value" id="playersValue">-/-</span>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill players" id="playersBar"></div></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-cpu-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">CPU</span>
+              <span class="stat-value" id="cpuValue">0 %</span>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill cpu" id="cpuBar"></div></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-memory"></i></div>
+            <div class="stat-text">
+              <span class="stat-label">RAM</span>
+              <span class="stat-value" id="ramValue">0 ko</span>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill ram" id="ramBar"></div></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-hdd-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label" data-i18n="server.serverFolder">Dossier serveur</span>
+              <span class="stat-value" id="diskValue">-- Go</span>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill disk" id="diskBar"></div></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-hdd-network-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label" data-i18n="server.network">Réseau</span>
+              <span class="stat-value" id="networkValue">--</span>
+            </div>
+          </div>
+          <div class="network-status">
+            <span class="dot" id="networkDot"></span>
+            <span id="networkStatusText">--</span>
+          </div>
+        </div>
+      </aside>
+
+      <footer class="action-bar">
+        <button class="pill pill-start" id="btnStart">
+          <i class="bi bi-play-fill pill-icon"></i> <span data-i18n="server.start">Démarrer</span>
+        </button>
+        <button class="pill pill-restart" id="btnRestart">
+          <i class="bi bi-arrow-repeat pill-icon"></i> <span data-i18n="server.restart">Redémarrer</span>
+        </button>
+        <button class="pill pill-stop" id="btnStop">
+          <i class="bi bi-stop-fill pill-icon"></i> <span data-i18n="server.stop">Arrêter</span>
+        </button>
+        <button class="pill pill-kill" id="btnKill">
+          <i class="bi bi-exclamation-octagon-fill pill-icon"></i> Kill
+        </button>
+        <button class="pill pill-ghost" id="btnCopy">
+          <i class="bi bi-controller pill-icon"></i> <span data-i18n="server.copyAddress">Copier l'adresse</span>
+        </button>
+      </footer>
+    </div>
+
+    <section class="players-panel" id="playersPanel">
+      <div class="players-header">
+        <i class="bi bi-people-fill"></i>
+        <span data-i18n="server.connectedPlayers">Joueurs connectés</span>
+        <span class="players-count" id="playersCount">0</span>
+      </div>
+      <div class="players-list" id="playersList">
+        <div class="players-empty" data-i18n="server.noPlayers">Aucun joueur connecté</div>
+      </div>
+    </section>
+  </div>

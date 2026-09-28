@@ -157,7 +157,11 @@ html, body {
   transition: transform 0.2s ease, background-color 0.3s ease;
 }
 .theme-toggle:hover { transform: rotate(20deg) scale(1.05); }
-.theme-toggle-floating { position: fixed; top: 20px; right: 28px; z-index: 5; }
+.theme-toggle .lang-flag { font-size: 17px; line-height: 1; }
+/* Each view (home.html, server.html) has its own copy of these buttons, sitting inline with
+   that view's own header content — that's what keeps them next to btnFiles/btnSettings
+   instead of overlapping them or pushing the whole page down, which position:fixed did. */
+.top-toggles { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 
 .icon-btn {
   width: 38px; height: 38px;
@@ -645,6 +649,8 @@ html, body {
 .home-create { display: flex; justify-content: center; padding: 18px 20px; }
 
 .home-stats-panel { display: flex; flex-direction: column; gap: 16px; }
+.home-links { display: flex; flex-direction: column; gap: 10px; }
+.home-links .pill { justify-content: center; text-decoration: none; }
 .home-stat-card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -678,11 +684,27 @@ html, body {
   box-sizing: border-box;
 }
 .settings-form input:focus, .settings-form select:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+.settings-form input[type="number"] { -moz-appearance: textfield; }
+.settings-form input[type="number"]::-webkit-outer-spin-button,
+.settings-form input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.settings-form input[type="color"] {
+  padding: 3px;
+  background: transparent;
+  cursor: pointer;
+  height: 38px;
+}
+.settings-form input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; border-radius: 7px; }
+.settings-form input[type="color"]::-webkit-color-swatch { border: none; border-radius: 7px; }
+.settings-form input[type="color"]::-moz-color-swatch { border: none; border-radius: 7px; }
 .settings-row { display: flex; gap: 12px; min-width: 0; }
 .settings-row-4 { gap: 6px; }
 .settings-row-4 label { font-size: 10px; }
 .settings-row-4 input { padding: 9px 4px; text-align: center; }
 .settings-group { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#newServerWowFields { gap: 8px; }
 .settings-hint { font-size: 12px; color: var(--muted); margin: -4px 0 0; }
 .form-error { display: none; font-size: 13px; font-weight: 600; color: var(--red-dark); margin: -4px 0 0; }
 .form-error.show { display: block; }
@@ -716,38 +738,47 @@ html, body {
 .modal-settings {
   width: 720px;
   max-width: 92vw;
-  height: 636px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
 }
 .modal-settings .modal-actions { flex: none; margin-top: 14px; }
 
+/* A fixed height + a second scrollable region nested inside used to force an ugly inner
+   scrollbar whenever a game's fields were taller than the box (e.g. WoW's bigger icon grid).
+   Sizing to content instead, with the modal itself as the only scroll region, avoids that. */
 .settings-form-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 26px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  align-items: start;
 }
 .settings-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
 .icon-picker-grid {
   display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  gap: 5px;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  max-height: 172px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) transparent;
 }
+.icon-picker-grid::-webkit-scrollbar { width: 8px; }
+.icon-picker-grid::-webkit-scrollbar-track { background: transparent; }
+.icon-picker-grid::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 4px; opacity: 0.6; }
+.icon-picker-grid::-webkit-scrollbar-thumb:hover { background: var(--blue); }
 .icon-picker-btn {
-  width: 26px; height: 26px;
+  width: 38px; height: 38px;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 7px;
+  border-radius: 9px;
   border: 1px solid var(--border);
   background: var(--track);
   color: var(--text);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 18px;
 }
 .icon-picker-btn:hover { background: var(--blue); color: white; border-color: transparent; }
 .icon-picker-btn.active { background: var(--blue); color: white; border-color: transparent; }
@@ -920,7 +951,7 @@ html, body {
   .topbar { flex-direction: column; align-items: flex-start; gap: 10px; }
   .topbar-right { width: 100%; justify-content: space-between; }
   .server-path { text-align: left; }
-  .theme-toggle-floating { top: 14px; right: 14px; }
+  .top-toggles-floating { padding: 14px 14px 0; }
   .home-layout { grid-template-columns: 1fr; }
   .home-stats-panel { flex-direction: row; flex-wrap: wrap; }
   .home-stat-card { flex: 1; min-width: 160px; }

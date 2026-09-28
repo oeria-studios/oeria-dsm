@@ -10,237 +10,28 @@
 <body>
   <div class="bg-glow"></div>
 
-  <button class="theme-toggle theme-toggle-floating" id="themeToggle" title="Changer de thème">
-    <i class="bi bi-moon-stars-fill" id="themeIcon"></i>
-  </button>
+  <div class="app-version-tag" id="appVersionTag">VERSION: 0.1.0 | Copyright (c) 2026 OERIA STUDIOS</div>
 
-  <div class="app-version-tag">VERSION: 0.1.0 | Copyright (c) 2026 OERIA STUDIOS</div>
-
-  <!-- ==================== HOME VIEW ==================== -->
-  <div id="homeView">
-    <header class="home-topbar">
-      <div class="brand">
-        <img src="logo.png" alt="OERIA-DSM" class="brand-logo">
-      </div>
-    </header>
-
-    <div class="home-layout">
-      <section class="server-list-panel">
-        <div class="server-search">
-          <i class="bi bi-search"></i>
-          <input type="text" id="serverSearchInput" placeholder="Rechercher un serveur...">
-        </div>
-        <div class="server-list" id="serverGrid">
-          <div class="server-grid-empty" id="serverGridEmpty">Aucun serveur pour le moment.</div>
-        </div>
-
-        <div class="home-create">
-          <button class="pill pill-start" id="btnCreateServer">
-            <i class="bi bi-plus-circle-fill pill-icon"></i> Créer un serveur
-          </button>
-        </div>
-      </section>
-
-      <aside class="home-stats-panel">
-        <div class="home-stat-card">
-          <div class="stat-top">
-            <div class="stat-icon"><i class="bi bi-cpu-fill"></i></div>
-            <div class="stat-text">
-              <span class="stat-label">CPU total</span>
-              <span class="stat-value" id="totalCpuValue">0 %</span>
-            </div>
-          </div>
-        </div>
-        <div class="home-stat-card">
-          <div class="stat-top">
-            <div class="stat-icon"><i class="bi bi-memory"></i></div>
-            <div class="stat-text">
-              <span class="stat-label">RAM totale</span>
-              <span class="stat-value" id="totalRamValue">0 ko</span>
-            </div>
-          </div>
-        </div>
-        <div class="home-stat-card">
-          <div class="stat-top">
-            <div class="stat-icon"><i class="bi bi-hdd-fill"></i></div>
-            <div class="stat-text">
-              <span class="stat-label">Stockage total</span>
-              <span class="stat-value" id="totalDiskValue">0 Go</span>
-            </div>
-          </div>
-        </div>
-      </aside>
-    </div>
-  </div>
-
-  <!-- ==================== SERVER VIEW ==================== -->
-  <div id="serverView" class="view-hidden">
-    <header class="topbar">
-      <div class="brand">
-        <button class="icon-btn" id="btnHome" title="Retour à l'accueil"><i class="bi bi-arrow-left"></i></button>
-        <div class="brand-icon"><i class="bi bi-joystick" id="serverGameIcon"></i></div>
-        <span class="brand-title" id="serverTitle">—</span>
-        <span class="status-badge" id="statusBadge">
-          <span class="dot" id="statusDot"></span>
-          <span id="statusText">Connexion...</span>
-        </span>
-        <span class="status-badge view-hidden" id="authStatusBadge" title="Serveur d'authentification">
-          <span class="dot" id="authStatusDot"></span>
-          <span id="authStatusText">Auth</span>
-        </span>
-        <span class="status-badge view-hidden" id="dbStatusBadge" title="Base de données MySQL">
-          <span class="dot" id="dbStatusDot"></span>
-          <span id="dbStatusText">MySQL</span>
-        </span>
-        <span class="tps-badge" id="tpsBadge">
-          <i class="bi bi-speedometer2"></i>
-          <span class="tps-label">TPS</span>
-          <span class="tps-value" id="tpsValue">--</span>
-        </span>
-        <span class="uptime" id="uptime"></span>
-      </div>
-      <div class="topbar-right">
-        <div class="server-path" id="serverPath"></div>
-        <button class="icon-btn" id="btnFiles" title="Fichiers de configuration">
-          <i class="bi bi-file-earmark-text-fill"></i>
-        </button>
-        <button class="icon-btn" id="btnSettings" title="Paramètres du serveur">
-          <i class="bi bi-gear-fill"></i>
-        </button>
-      </div>
-    </header>
-
-    <div class="banner" id="eulaBanner">
-      <i class="bi bi-exclamation-triangle-fill"></i>
-      <span>Le serveur refuse de démarrer tant que l'EULA n'est pas acceptée.</span>
-      <button id="btnEula">Accepter l'EULA</button>
-    </div>
-
-    <div class="server-layout">
-      <section class="console-panel">
-        <div class="console-header">
-          <span class="dot console-status-dot" id="consoleStatusDot"></span>
-          <i class="bi bi-terminal-fill"></i>
-          <span>Console</span>
-          <div class="console-header-right">
-            <span class="severity-badge error-badge" id="errorBadge" title="Erreurs (clic pour réinitialiser)">
-              <i class="bi bi-x-circle-fill"></i>
-              <span id="errorCount">0</span>
-            </span>
-            <span class="severity-badge warn-badge" id="warnBadge" title="Avertissements (clic pour réinitialiser)">
-              <i class="bi bi-exclamation-triangle-fill"></i>
-              <span id="warnCount">0</span>
-            </span>
-            <button type="button" class="autoscroll-toggle active" id="btnAutoscroll" title="Défilement automatique">
-              <i class="bi bi-arrow-down-circle-fill"></i>
-              <span>Auto-scroll</span>
-            </button>
-            <button type="button" class="icon-btn console-export-btn" id="btnExportLogs" title="Exporter les logs (.txt)">
-              <i class="bi bi-download"></i>
-            </button>
-          </div>
-        </div>
-        <div class="console" id="console"></div>
-        <form id="cmdForm" class="cmd-form">
-          <i class="bi bi-chevron-right cmd-caret"></i>
-          <input type="text" id="cmdInput" placeholder="Entrez votre commande" autocomplete="off">
-          <button type="submit" class="cmd-send"><i class="bi bi-send-fill"></i> <span>Envoyer</span></button>
-        </form>
-      </section>
-
-      <aside class="server-stats-panel">
-        <div class="stat-card">
-          <div class="stat-top">
-            <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
-            <div class="stat-text">
-              <span class="stat-label">Joueurs</span>
-              <span class="stat-value" id="playersValue">-/-</span>
-            </div>
-          </div>
-          <div class="progress-track"><div class="progress-fill players" id="playersBar"></div></div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-top">
-            <div class="stat-icon"><i class="bi bi-cpu-fill"></i></div>
-            <div class="stat-text">
-              <span class="stat-label">CPU</span>
-              <span class="stat-value" id="cpuValue">0 %</span>
-            </div>
-          </div>
-          <div class="progress-track"><div class="progress-fill cpu" id="cpuBar"></div></div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-top">
-            <div class="stat-icon"><i class="bi bi-memory"></i></div>
-            <div class="stat-text">
-              <span class="stat-label">RAM</span>
-              <span class="stat-value" id="ramValue">0 ko</span>
-            </div>
-          </div>
-          <div class="progress-track"><div class="progress-fill ram" id="ramBar"></div></div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-top">
-            <div class="stat-icon"><i class="bi bi-hdd-fill"></i></div>
-            <div class="stat-text">
-              <span class="stat-label">Dossier serveur</span>
-              <span class="stat-value" id="diskValue">-- Go</span>
-            </div>
-          </div>
-          <div class="progress-track"><div class="progress-fill disk" id="diskBar"></div></div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-top">
-            <div class="stat-icon"><i class="bi bi-hdd-network-fill"></i></div>
-            <div class="stat-text">
-              <span class="stat-label">Réseau</span>
-              <span class="stat-value" id="networkValue">--</span>
-            </div>
-          </div>
-          <div class="network-status">
-            <span class="dot" id="networkDot"></span>
-            <span id="networkStatusText">--</span>
-          </div>
-        </div>
-      </aside>
-
-      <footer class="action-bar">
-        <button class="pill pill-start" id="btnStart">
-          <i class="bi bi-play-fill pill-icon"></i> Démarrer
-        </button>
-        <button class="pill pill-restart" id="btnRestart">
-          <i class="bi bi-arrow-repeat pill-icon"></i> Redémarrer
-        </button>
-        <button class="pill pill-stop" id="btnStop">
-          <i class="bi bi-stop-fill pill-icon"></i> Arrêter
-        </button>
-        <button class="pill pill-kill" id="btnKill">
-          <i class="bi bi-exclamation-octagon-fill pill-icon"></i> Kill
-        </button>
-        <button class="pill pill-ghost" id="btnEditServer">
-          <i class="bi bi-pencil-fill pill-icon"></i> Modifier
-        </button>
-        <button class="pill pill-ghost" id="btnCopy">
-          <i class="bi bi-controller pill-icon"></i> Copier l'adresse
-        </button>
-      </footer>
-    </div>
-
-    <section class="players-panel" id="playersPanel">
-      <div class="players-header">
-        <i class="bi bi-people-fill"></i>
-        <span>Joueurs connectés</span>
-        <span class="players-count" id="playersCount">0</span>
-      </div>
-      <div class="players-list" id="playersList">
-        <div class="players-empty">Aucun joueur connecté</div>
-      </div>
-    </section>
-  </div>
+  <!-- ==================== HOME VIEW (public/home.html) & SERVER VIEW (public/server.html) ====================
+       Loaded synchronously below so app.js can query their elements immediately on script load,
+       same as if they were still inlined here — kept in separate files just to keep this shell
+       short and each view's markup self-contained. -->
+  <script>
+    (function loadViewSync(url) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, false);
+      xhr.send(null);
+      document.write(xhr.status === 200 ? xhr.responseText : '<!-- failed to load ' + url + ' -->');
+    })('home.html');
+  </script>
+  <script>
+    (function loadViewSync(url) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, false);
+      xhr.send(null);
+      document.write(xhr.status === 200 ? xhr.responseText : '<!-- failed to load ' + url + ' -->');
+    })('server.html');
+  </script>
 
   <!-- ==================== MODALS ==================== -->
   <div class="modal-overlay" id="logsModal">
@@ -248,25 +39,25 @@
       <h3><i class="bi bi-terminal-fill"></i> <span id="logsModalTitle">Logs</span></h3>
       <div class="console logs-console" id="logsConsole"></div>
       <div class="modal-actions">
-        <button type="button" class="pill pill-ghost" id="logsExport"><i class="bi bi-download pill-icon"></i> Exporter</button>
-        <button type="button" class="pill pill-ghost" id="logsClose">Fermer</button>
+        <button type="button" class="pill pill-ghost" id="logsExport"><i class="bi bi-download pill-icon"></i> <span data-i18n="common.export">Exporter</span></button>
+        <button type="button" class="pill pill-ghost" id="logsClose" data-i18n="common.close">Fermer</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" id="filesModal">
     <div class="modal modal-files">
-      <h3><i class="bi bi-file-earmark-text-fill"></i> Fichiers de configuration</h3>
+      <h3><i class="bi bi-file-earmark-text-fill"></i> <span data-i18n="files.title">Fichiers de configuration</span></h3>
       <div class="files-layout">
         <div class="files-list-panel">
           <div class="files-search">
             <i class="bi bi-search"></i>
-            <input type="text" id="filesSearchInput" placeholder="Rechercher un fichier...">
+            <input type="text" id="filesSearchInput" data-i18n-placeholder="files.search" placeholder="Rechercher un fichier...">
           </div>
           <div class="files-list" id="filesList"></div>
         </div>
         <div class="files-editor">
-          <div class="files-editor-header" id="filesCurrentName">Sélectionne un fichier</div>
+          <div class="files-editor-header" id="filesCurrentName" data-i18n="files.selectFile">Sélectionne un fichier</div>
           <div class="code-editor" id="codeEditor">
             <div class="code-gutter" id="codeGutter"></div>
             <div class="code-content">
@@ -277,48 +68,48 @@
           </div>
           <div class="files-editor-footer">
             <span class="files-status" id="filesStatus"></span>
-            <button type="button" class="pill pill-start" id="filesSave" disabled>Enregistrer</button>
+            <button type="button" class="pill pill-start" id="filesSave" disabled data-i18n="common.save">Enregistrer</button>
           </div>
         </div>
       </div>
       <div class="modal-actions">
-        <button type="button" class="pill pill-ghost" id="filesClose">Fermer</button>
+        <button type="button" class="pill pill-ghost" id="filesClose" data-i18n="common.close">Fermer</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" id="killModal">
     <div class="modal modal-danger">
-      <h3><i class="bi bi-exclamation-octagon-fill"></i> Forcer l'arrêt du serveur ?</h3>
-      <p>Le kill coupe immédiatement le processus sans sauvegarde propre. Le monde peut perdre des données récentes.</p>
+      <h3><i class="bi bi-exclamation-octagon-fill"></i> <span data-i18n="kill.title">Forcer l'arrêt du serveur ?</span></h3>
+      <p data-i18n="kill.body">Le kill coupe immédiatement le processus sans sauvegarde propre. Le monde peut perdre des données récentes.</p>
       <div class="modal-actions">
-        <button class="pill pill-ghost" id="killCancel">Annuler</button>
-        <button class="pill pill-kill" id="killConfirm">Confirmer le kill</button>
+        <button class="pill pill-ghost" id="killCancel" data-i18n="common.cancel">Annuler</button>
+        <button class="pill pill-kill" id="killConfirm" data-i18n="kill.confirm">Confirmer le kill</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" id="deleteModal">
     <div class="modal modal-danger">
-      <h3><i class="bi bi-trash-fill"></i> Supprimer ce serveur ?</h3>
-      <p>Le serveur sera retiré du dashboard (les fichiers du dossier ne sont pas supprimés).</p>
+      <h3><i class="bi bi-trash-fill"></i> <span data-i18n="delete.title">Supprimer ce serveur ?</span></h3>
+      <p data-i18n="delete.body">Le serveur sera retiré du dashboard (les fichiers du dossier ne sont pas supprimés).</p>
       <div class="modal-actions">
-        <button class="pill pill-ghost" id="deleteCancel">Annuler</button>
-        <button class="pill pill-kill" id="deleteConfirm">Supprimer</button>
+        <button class="pill pill-ghost" id="deleteCancel" data-i18n="common.cancel">Annuler</button>
+        <button class="pill pill-kill" id="deleteConfirm" data-i18n="common.delete">Supprimer</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" id="createServerModal">
     <div class="modal modal-settings">
-      <h3><i class="bi bi-plus-circle-fill"></i> Créer un serveur</h3>
+      <h3><i class="bi bi-plus-circle-fill"></i> <span data-i18n="create.title">Créer un serveur</span></h3>
       <form id="createServerForm" class="settings-form settings-form-columns">
         <div class="settings-col">
-          <label>Nom du serveur
-            <input type="text" id="newServerName" placeholder="Mon serveur">
+          <label data-i18n="create.name">Nom du serveur
+            <input type="text" id="newServerName" data-i18n-placeholder="create.namePlaceholder" placeholder="Mon serveur">
           </label>
           <div class="settings-row">
-            <label>Jeu
+            <label data-i18n="create.game">Jeu
               <select id="newServerGame">
                 <option value="minecraft">Minecraft</option>
                 <option value="gmod">Garry's Mod</option>
@@ -331,41 +122,42 @@
                 <option value="fivem">FiveM</option>
                 <option value="7dtd">7 Days to Die</option>
                 <option value="wow">World of Warcraft</option>
+                <option value="hytale">Hytale</option>
               </select>
             </label>
-            <label id="newServerPortField">Port
+            <label id="newServerPortField" data-i18n="create.port">Port
               <input type="number" id="newServerPort" placeholder="25565">
             </label>
           </div>
-          <label>Dossier du serveur
+          <label data-i18n="create.folder">Dossier du serveur
             <input type="text" id="newServerDir" placeholder="D:\Serveurs\MonServeur">
           </label>
 
           <div id="newServerMcFields" class="settings-group">
-            <label>Nom du fichier .jar
+            <label data-i18n="create.jarName">Nom du fichier .jar
               <input type="text" id="newServerJar" placeholder="server.jar">
             </label>
-            <label>Chemin Java (version)
+            <label data-i18n="create.javaPath">Chemin Java (version)
               <input type="text" id="newServerJava" placeholder="C:\...\java.exe">
             </label>
             <div class="settings-row">
-              <label>RAM min
+              <label data-i18n="create.ramMin">RAM min
                 <input type="text" id="newServerMinRam" placeholder="1G">
               </label>
-              <label>RAM max
+              <label data-i18n="create.ramMax">RAM max
                 <input type="text" id="newServerMaxRam" placeholder="4G">
               </label>
             </div>
           </div>
 
           <div id="newServerGmodFields" class="settings-group view-hidden">
-            <label>Exécutable
+            <label data-i18n="create.executable">Exécutable
               <input type="text" id="newServerExe" placeholder="srcds.exe">
             </label>
           </div>
 
           <div id="newServerWowFields" class="settings-group view-hidden">
-            <label>Version de WoW
+            <label data-i18n="create.wowVersion">Version de WoW
               <select id="newServerWowVersion">
                 <option value="vanilla">Vanilla / Classic (1.12)</option>
                 <option value="tbc">The Burning Crusade (2.4.3)</option>
@@ -380,103 +172,127 @@
                 <option value="thewarwithin">The War Within (11.x)</option>
               </select>
             </label>
-            <p class="settings-hint">Le dashboard détecte automatiquement worldserver.exe/authserver.exe (ou mangosd.exe/realmd.exe) dans le dossier et lance les deux ensemble.</p>
 
-            <button type="button" class="pill pill-ghost" id="btnWowBuild">
-              <i class="bi bi-cloud-download-fill pill-icon"></i> Compiler et installer (AzerothCore)
+            <button type="button" class="pill pill-ghost" id="btnWowBuild" data-i18n-title="create.wowBuildTitleAttr" title="Nécessite Git, CMake et Visual Studio (Desktop C++). Clone et compile les serveurs dans le dossier ci-dessus — 20 à 60 minutes. Seul WotLK a été testé de bout en bout ; les autres versions utilisent le même pipeline mais peuvent révéler un souci spécifique au premier essai.">
+              <i class="bi bi-cloud-download-fill pill-icon"></i> <span data-i18n="create.wowBuild">Compiler et installer</span>
             </button>
-            <p class="settings-hint" id="wowBuildHint">Nécessite Git, CMake et Visual Studio (Desktop C++) déjà installés. Clone AzerothCore et compile authserver/worldserver directement dans le dossier ci-dessus — compte 20 à 60 minutes.</p>
-            <p class="settings-hint wow-build-note view-hidden" id="wowBuildVersionNote">Compilation automatique disponible uniquement pour Wrath of the Lich King pour l'instant — pour les autres versions, il faut compiler/installer manuellement le core correspondant.</p>
+            <p class="settings-hint wow-build-note view-hidden" id="wowBuildVersionNote" data-i18n="create.wowVersionNote">Pas de projet open source fiable pour cette version — installation manuelle requise.</p>
+          </div>
+
+          <div id="newServerHytaleFields" class="settings-group view-hidden">
+            <label data-i18n="create.jarName">Nom du fichier .jar
+              <input type="text" id="newServerHytaleJar" placeholder="HytaleServer.jar">
+            </label>
+            <label data-i18n="create.javaPath">Chemin Java (version 25+)
+              <input type="text" id="newServerHytaleJava" placeholder="C:\...\java.exe">
+            </label>
+            <label data-i18n="create.hytaleAssets">Chemin vers Assets.zip
+              <input type="text" id="newServerAssetsPath" placeholder="C:\...\Assets.zip">
+            </label>
+            <div class="settings-row">
+              <label data-i18n="create.ramMin">RAM min
+                <input type="text" id="newServerHytaleMinRam" placeholder="2G">
+              </label>
+              <label data-i18n="create.ramMax">RAM max
+                <input type="text" id="newServerHytaleMaxRam" placeholder="6G">
+              </label>
+            </div>
           </div>
         </div>
 
         <div class="settings-col">
-          <h4>Apparence</h4>
+          <h4 data-i18n="create.appearance">Apparence</h4>
           <div class="settings-row">
-            <label>Icône
+            <label data-i18n="create.icon">Icône
               <input type="text" id="newServerIcon" placeholder="joystick">
             </label>
-            <label>Couleur
+            <label data-i18n="create.color">Couleur
               <input type="color" id="newServerColor" value="#1f6fc0">
             </label>
           </div>
           <div class="icon-picker-grid" id="newServerIconGrid"></div>
           <div class="icon-preview">
             <div class="stat-icon" id="newServerIconPreview" style="background:#1f6fc0"><i class="bi bi-joystick"></i></div>
-            <span>Aperçu</span>
+            <span data-i18n="create.preview">Aperçu</span>
           </div>
 
-          <p class="settings-hint">Le dossier doit déjà contenir les fichiers du serveur (jar / exécutable) — la création ici ne fait qu'enregistrer le serveur dans le dashboard.</p>
+          <p class="settings-hint" data-i18n="create.folderHint">Le dossier doit déjà contenir les fichiers du serveur (jar / exécutable) — la création ici ne fait qu'enregistrer le serveur dans le dashboard.</p>
           <p class="form-error" id="createServerError"></p>
         </div>
       </form>
 
       <div class="modal-actions">
-        <button type="button" class="pill pill-ghost" id="createServerCancel">Annuler</button>
-        <button type="submit" form="createServerForm" class="pill pill-start">Créer</button>
+        <button type="button" class="pill pill-ghost" id="createServerCancel" data-i18n="common.cancel">Annuler</button>
+        <button type="submit" form="createServerForm" class="pill pill-start" data-i18n="common.create">Créer</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" id="wowBuildModal">
     <div class="modal modal-wow-build">
-      <h3><i class="bi bi-hammer"></i> Compilation AzerothCore</h3>
-      <p class="wow-build-status" id="wowBuildStatusText">Démarrage...</p>
+      <h3><i class="bi bi-hammer"></i> <span data-i18n="wowBuild.title">Compilation AzerothCore</span></h3>
+      <p class="wow-build-status" id="wowBuildStatusText" data-i18n="wowBuild.starting">Démarrage...</p>
       <div class="console wow-build-console" id="wowBuildConsole"></div>
       <div class="modal-actions">
         <div class="wow-build-progress" id="wowBuildProgress">
           <div class="wow-build-progress-fill" id="wowBuildProgressFill"></div>
         </div>
-        <button type="button" class="pill pill-ghost" id="wowBuildClose">Fermer</button>
+        <button type="button" class="pill pill-ghost" id="wowBuildClose" data-i18n="common.close">Fermer</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" id="settingsModal">
     <div class="modal modal-settings">
-      <h3><i class="bi bi-gear-fill"></i> Paramètres du serveur</h3>
+      <h3><i class="bi bi-gear-fill"></i> <span data-i18n="settings.title">Paramètres du serveur</span></h3>
       <form id="settingsForm" class="settings-form settings-form-columns">
         <div class="settings-col">
           <div class="settings-row">
-            <label>Nom
+            <label data-i18n="settings.name">Nom
               <input type="text" id="setName">
             </label>
-            <label>Port
+            <label data-i18n="create.port">Port
               <input type="number" id="setPort">
             </label>
           </div>
 
           <div id="setMcFields" class="settings-group">
-            <label>Nom du fichier .jar
+            <label data-i18n="create.jarName">Nom du fichier .jar
               <input type="text" id="setJar">
             </label>
-            <label>Chemin Java (version)
+            <label data-i18n="create.javaPath">Chemin Java (version)
               <input type="text" id="setJava">
             </label>
             <div class="settings-row">
-              <label>RAM min
+              <label data-i18n="create.ramMin">RAM min
                 <input type="text" id="setMinRam">
               </label>
-              <label>RAM max
+              <label data-i18n="create.ramMax">RAM max
                 <input type="text" id="setMaxRam">
               </label>
             </div>
-            <label>Arguments Java additionnels
+            <label data-i18n="settings.extraJavaArgs">Arguments Java additionnels
               <input type="text" id="setExtraArgs" placeholder="-Djava.awt.headless=true">
             </label>
           </div>
 
           <div id="setGmodFields" class="settings-group view-hidden">
-            <label>Exécutable
+            <label data-i18n="create.executable">Exécutable
               <input type="text" id="setExe">
             </label>
-            <label>Arguments de démarrage
+            <label data-i18n="settings.launchArgs">Arguments de démarrage
               <input type="text" id="setLaunchArgs" placeholder="-console -game garrysmod">
             </label>
           </div>
 
           <div id="setWowFields" class="settings-group view-hidden">
-            <label>Version de WoW
+            <label data-i18n="settings.wowExe">Exécutable (monde)
+              <input type="text" id="setWowExe" placeholder="worldserver.exe">
+            </label>
+            <label data-i18n="settings.wowAuthExe">Exécutable du serveur d'authentification
+              <input type="text" id="setWowAuthExe" placeholder="authserver.exe">
+            </label>
+            <label data-i18n="create.wowVersion">Version de WoW
               <select id="setWowVersion">
                 <option value="vanilla">Vanilla / Classic (1.12)</option>
                 <option value="tbc">The Burning Crusade (2.4.3)</option>
@@ -491,49 +307,66 @@
                 <option value="thewarwithin">The War Within (11.x)</option>
               </select>
             </label>
-            <label>Exécutable du serveur d'authentification
-              <input type="text" id="setWowAuthExe" placeholder="authserver.exe">
-            </label>
           </div>
 
-          <h4>Limites des jauges</h4>
+          <div id="setHytaleFields" class="settings-group view-hidden">
+            <label data-i18n="create.jarName">Nom du fichier .jar
+              <input type="text" id="setHytaleJar">
+            </label>
+            <label data-i18n="create.javaPath">Chemin Java (version 25+)
+              <input type="text" id="setHytaleJava">
+            </label>
+            <label data-i18n="create.hytaleAssets">Chemin vers Assets.zip
+              <input type="text" id="setAssetsPath">
+            </label>
+            <div class="settings-row">
+              <label data-i18n="create.ramMin">RAM min
+                <input type="text" id="setHytaleMinRam">
+              </label>
+              <label data-i18n="create.ramMax">RAM max
+                <input type="text" id="setHytaleMaxRam">
+              </label>
+            </div>
+          </div>
+
+          <h4 data-i18n="settings.limits">Limites des jauges</h4>
           <div class="settings-row settings-row-4">
-            <label>CPU max (%)
+            <label data-i18n="settings.cpuMax">CPU max (%)
               <input type="number" id="setCpuMax" placeholder="100">
             </label>
-            <label>RAM max (Mo)
+            <label data-i18n="settings.ramMax">RAM max (Mo)
               <input type="number" id="setRamMax" placeholder="6144">
             </label>
-            <label>Stockage max (Go)
+            <label data-i18n="settings.storageMax">Stockage max (Go)
               <input type="number" id="setStorageMax" placeholder="50">
             </label>
-            <label>Arrêt forcé (s)
+            <label data-i18n="settings.stopTimeout">Arrêt forcé (s)
               <input type="number" id="setStopTimeout" placeholder="30">
             </label>
           </div>
         </div>
 
         <div class="settings-col">
-          <h4>Apparence</h4>
+          <h4 data-i18n="create.appearance">Apparence</h4>
           <div class="settings-row">
-            <label>Icône
+            <label data-i18n="create.icon">Icône
               <input type="text" id="setIcon">
             </label>
-            <label>Couleur
+            <label data-i18n="create.color">Couleur
               <input type="color" id="setColor">
             </label>
           </div>
           <div class="icon-picker-grid" id="setIconGrid"></div>
           <div class="icon-preview">
             <div class="stat-icon" id="setIconPreview"><i class="bi bi-joystick"></i></div>
-            <span>Aperçu</span>
+            <span data-i18n="create.preview">Aperçu</span>
           </div>
         </div>
       </form>
 
       <div class="modal-actions">
-        <button type="button" class="pill pill-ghost" id="settingsCancel">Annuler</button>
-        <button type="submit" form="settingsForm" class="pill pill-start">Enregistrer</button>
+        <button type="button" class="pill pill-ghost" id="settingsCancel" data-i18n="common.cancel">Annuler</button>
+        <button type="submit" form="settingsForm" class="pill pill-start" data-i18n="common.save">Enregistrer</button>
       </div>
     </div>
   </div>

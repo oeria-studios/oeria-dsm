@@ -2,13 +2,20 @@ const socket = io();
 
 const el = (id) => document.getElementById(id);
 
-// ---- Theme ----
-const themeToggle = el('themeToggle');
-const themeIcon = el('themeIcon');
+// ---- App version (configurable in config.json) ----
+fetch('/api/app-info').then((r) => r.json()).then((info) => {
+  el('appVersionTag').textContent = `VERSION: ${info.version} | Copyright (c) 2026 OERIA STUDIOS`;
+}).catch(() => {});
 
+// ---- Theme ----
+// The toggle buttons exist once per view (home.html and server.html each have their own copy,
+// so they sit inline with that view's own header buttons instead of floating over them) —
+// targeted by shared classes rather than an id, since an id can only match one element.
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
-  themeIcon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
+  document.querySelectorAll('.theme-icon').forEach((iconEl) => {
+    iconEl.className = 'theme-icon bi ' + (theme === 'dark' ? 'bi-sun-fill' : 'bi-moon-stars-fill');
+  });
   localStorage.setItem('everise-theme', theme);
 }
 
@@ -16,9 +23,240 @@ const savedTheme = localStorage.getItem('everise-theme')
   || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 applyTheme(savedTheme);
 
-themeToggle.addEventListener('click', () => {
-  const current = document.documentElement.getAttribute('data-theme');
-  applyTheme(current === 'dark' ? 'light' : 'dark');
+document.querySelectorAll('.theme-toggle-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+  });
+});
+
+// ---- Language ----
+const I18N = {
+  fr: {
+    'topbar.changeLang': 'Changer de langue',
+    'topbar.changeTheme': 'Changer de thème',
+    'home.search': 'Rechercher un serveur...',
+    'home.emptyGrid': 'Aucun serveur pour le moment.',
+    'home.createServer': 'Créer un serveur',
+    'home.totalCpu': 'CPU total',
+    'home.totalRam': 'RAM totale',
+    'home.totalDisk': 'Stockage total',
+    'home.documentation': 'Documentation',
+    'server.backHome': "Retour à l'accueil",
+    'server.connecting': 'Connexion...',
+    'server.authTitle': "Serveur d'authentification",
+    'server.dbTitle': 'Base de données MySQL',
+    'server.configFiles': 'Fichiers de configuration',
+    'server.settings': 'Paramètres du serveur',
+    'server.eulaBanner': "Le serveur refuse de démarrer tant que l'EULA n'est pas acceptée.",
+    'server.acceptEula': "Accepter l'EULA",
+    'server.console': 'Console',
+    'server.errorsTitle': 'Erreurs (clic pour réinitialiser)',
+    'server.warningsTitle': 'Avertissements (clic pour réinitialiser)',
+    'server.autoscrollTitle': 'Défilement automatique',
+    'server.autoscroll': 'Auto-scroll',
+    'server.exportLogsTitle': 'Exporter les logs (.txt)',
+    'server.cmdPlaceholder': 'Entrez votre commande',
+    'server.send': 'Envoyer',
+    'server.players': 'Joueurs',
+    'server.serverFolder': 'Dossier serveur',
+    'server.network': 'Réseau',
+    'server.start': 'Démarrer',
+    'server.restart': 'Redémarrer',
+    'server.stop': 'Arrêter',
+    'server.edit': 'Modifier',
+    'server.copyAddress': "Copier l'adresse",
+    'server.connectedPlayers': 'Joueurs connectés',
+    'server.noPlayers': 'Aucun joueur connecté',
+    'common.export': 'Exporter',
+    'common.close': 'Fermer',
+    'common.save': 'Enregistrer',
+    'common.cancel': 'Annuler',
+    'common.delete': 'Supprimer',
+    'common.create': 'Créer',
+    'files.title': 'Fichiers de configuration',
+    'files.search': 'Rechercher un fichier...',
+    'files.selectFile': 'Sélectionne un fichier',
+    'kill.title': "Forcer l'arrêt du serveur ?",
+    'kill.body': 'Le kill coupe immédiatement le processus sans sauvegarde propre. Le monde peut perdre des données récentes.',
+    'kill.confirm': 'Confirmer le kill',
+    'delete.title': 'Supprimer ce serveur ?',
+    'delete.body': 'Le serveur sera retiré du dashboard (les fichiers du dossier ne sont pas supprimés).',
+    'create.title': 'Créer un serveur',
+    'create.name': 'Nom du serveur',
+    'create.namePlaceholder': 'Mon serveur',
+    'create.game': 'Jeu',
+    'create.port': 'Port',
+    'create.folder': 'Dossier du serveur',
+    'create.jarName': 'Nom du fichier .jar',
+    'create.javaPath': 'Chemin Java (version)',
+    'create.ramMin': 'RAM min',
+    'create.ramMax': 'RAM max',
+    'create.hytaleAssets': 'Chemin vers Assets.zip',
+    'create.executable': 'Exécutable',
+    'create.wowVersion': 'Version de WoW',
+    'create.wowBuildTitleAttr': 'Nécessite Git, CMake et Visual Studio (Desktop C++). Clone et compile les serveurs dans le dossier ci-dessus — 20 à 60 minutes. Seul WotLK a été testé de bout en bout ; les autres versions utilisent le même pipeline mais peuvent révéler un souci spécifique au premier essai.',
+    'create.wowBuild': 'Compiler et installer',
+    'create.wowVersionNote': 'Pas de projet open source fiable pour cette version — installation manuelle requise.',
+    'create.appearance': 'Apparence',
+    'create.icon': 'Icône',
+    'create.color': 'Couleur',
+    'create.preview': 'Aperçu',
+    'create.folderHint': "Le dossier doit déjà contenir les fichiers du serveur (jar / exécutable) — la création ici ne fait qu'enregistrer le serveur dans le dashboard.",
+    'wowBuild.title': 'Compilation AzerothCore',
+    'wowBuild.starting': 'Démarrage...',
+    'settings.title': 'Paramètres du serveur',
+    'settings.name': 'Nom',
+    'settings.extraJavaArgs': 'Arguments Java additionnels',
+    'settings.launchArgs': 'Arguments de démarrage',
+    'settings.wowExe': 'Exécutable (monde)',
+    'settings.wowAuthExe': "Exécutable du serveur d'authentification",
+    'settings.limits': 'Limites des jauges',
+    'settings.cpuMax': 'CPU max (%)',
+    'settings.ramMax': 'RAM max (Mo)',
+    'settings.storageMax': 'Stockage max (Go)',
+    'settings.stopTimeout': 'Arrêt forcé (s)',
+    'status.running': 'En ligne',
+    'status.starting': 'Démarrage...',
+    'status.stopping': 'Arrêt en cours...',
+    'status.stopped': 'Hors ligne',
+  },
+  en: {
+    'topbar.changeLang': 'Change language',
+    'topbar.changeTheme': 'Change theme',
+    'home.search': 'Search a server...',
+    'home.emptyGrid': 'No server yet.',
+    'home.createServer': 'Create a server',
+    'home.totalCpu': 'Total CPU',
+    'home.totalRam': 'Total RAM',
+    'home.totalDisk': 'Total storage',
+    'home.documentation': 'Documentation',
+    'server.backHome': 'Back to home',
+    'server.connecting': 'Connecting...',
+    'server.authTitle': 'Authentication server',
+    'server.dbTitle': 'MySQL database',
+    'server.configFiles': 'Configuration files',
+    'server.settings': 'Server settings',
+    'server.eulaBanner': 'The server refuses to start until the EULA is accepted.',
+    'server.acceptEula': 'Accept EULA',
+    'server.console': 'Console',
+    'server.errorsTitle': 'Errors (click to reset)',
+    'server.warningsTitle': 'Warnings (click to reset)',
+    'server.autoscrollTitle': 'Auto-scroll',
+    'server.autoscroll': 'Auto-scroll',
+    'server.exportLogsTitle': 'Export logs (.txt)',
+    'server.cmdPlaceholder': 'Enter your command',
+    'server.send': 'Send',
+    'server.players': 'Players',
+    'server.serverFolder': 'Server folder',
+    'server.network': 'Network',
+    'server.start': 'Start',
+    'server.restart': 'Restart',
+    'server.stop': 'Stop',
+    'server.edit': 'Edit',
+    'server.copyAddress': 'Copy address',
+    'server.connectedPlayers': 'Connected players',
+    'server.noPlayers': 'No player connected',
+    'common.export': 'Export',
+    'common.close': 'Close',
+    'common.save': 'Save',
+    'common.cancel': 'Cancel',
+    'common.delete': 'Delete',
+    'common.create': 'Create',
+    'files.title': 'Configuration files',
+    'files.search': 'Search a file...',
+    'files.selectFile': 'Select a file',
+    'kill.title': 'Force stop the server?',
+    'kill.body': 'Killing immediately cuts the process with no clean save. The world may lose recent data.',
+    'kill.confirm': 'Confirm kill',
+    'delete.title': 'Delete this server?',
+    'delete.body': 'The server will be removed from the dashboard (files on disk are not deleted).',
+    'create.title': 'Create a server',
+    'create.name': 'Server name',
+    'create.namePlaceholder': 'My server',
+    'create.game': 'Game',
+    'create.port': 'Port',
+    'create.folder': 'Server folder',
+    'create.jarName': '.jar file name',
+    'create.javaPath': 'Java path (version)',
+    'create.ramMin': 'Min RAM',
+    'create.ramMax': 'Max RAM',
+    'create.hytaleAssets': 'Path to Assets.zip',
+    'create.executable': 'Executable',
+    'create.wowVersion': 'WoW version',
+    'create.wowBuildTitleAttr': 'Requires Git, CMake and Visual Studio (Desktop C++). Clones and compiles the servers into the folder above — 20 to 60 minutes. Only WotLK has been tested end-to-end; other versions use the same pipeline but may surface a version-specific issue on first try.',
+    'create.wowBuild': 'Compile and install',
+    'create.wowVersionNote': 'No reliable open-source project for this version — manual installation required.',
+    'create.appearance': 'Appearance',
+    'create.icon': 'Icon',
+    'create.color': 'Color',
+    'create.preview': 'Preview',
+    'create.folderHint': 'The folder must already contain the server files (jar / executable) — creating it here just registers the server in the dashboard.',
+    'wowBuild.title': 'AzerothCore compilation',
+    'wowBuild.starting': 'Starting...',
+    'settings.title': 'Server settings',
+    'settings.name': 'Name',
+    'settings.extraJavaArgs': 'Additional Java arguments',
+    'settings.launchArgs': 'Launch arguments',
+    'settings.wowExe': 'Executable (world)',
+    'settings.wowAuthExe': 'Authentication server executable',
+    'settings.limits': 'Gauge limits',
+    'settings.cpuMax': 'Max CPU (%)',
+    'settings.ramMax': 'Max RAM (MB)',
+    'settings.storageMax': 'Max storage (GB)',
+    'settings.stopTimeout': 'Forced stop (s)',
+    'status.running': 'Online',
+    'status.starting': 'Starting...',
+    'status.stopping': 'Stopping...',
+    'status.stopped': 'Offline',
+  },
+};
+
+// Flag emoji (🇫🇷/🇬🇧) render as literal "FR"/"GB" text on Windows unless a recent-enough
+// emoji font is installed, so these are drawn as small inline SVGs instead — guaranteed to
+// render the same everywhere regardless of font/OS support.
+const LANG_FLAGS = {
+  fr: '<svg viewBox="0 0 3 2" width="20" height="14"><rect width="1" height="2" x="0" fill="#0055A4"/><rect width="1" height="2" x="1" fill="#FFFFFF"/><rect width="1" height="2" x="2" fill="#EF4135"/></svg>',
+  en: '<svg viewBox="0 0 60 30" width="20" height="14"><rect width="60" height="30" fill="#00247d"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#cf142b" stroke-width="2"/><path d="M30,0 V30 M0,15 H60" stroke="#fff" stroke-width="10"/><path d="M30,0 V30 M0,15 H60" stroke="#cf142b" stroke-width="6"/></svg>',
+};
+let currentLang = localStorage.getItem('oeria-dsm-lang') || 'fr';
+
+function t(key) {
+  return (I18N[currentLang] && I18N[currentLang][key]) ?? (I18N.fr[key] ?? key);
+}
+
+function applyI18n() {
+  const dict = I18N[currentLang] || I18N.fr;
+  document.querySelectorAll('[data-i18n]').forEach((elm) => {
+    const text = dict[elm.getAttribute('data-i18n')];
+    if (text === undefined) return;
+    const textNode = [...elm.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 0);
+    if (textNode) textNode.textContent = text;
+    else elm.textContent = text;
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((elm) => {
+    const text = dict[elm.getAttribute('data-i18n-placeholder')];
+    if (text !== undefined) elm.placeholder = text;
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((elm) => {
+    const text = dict[elm.getAttribute('data-i18n-title')];
+    if (text !== undefined) elm.title = text;
+  });
+  document.querySelectorAll('.lang-flag').forEach((flagEl) => {
+    flagEl.innerHTML = LANG_FLAGS[currentLang] || LANG_FLAGS.fr;
+  });
+  document.documentElement.lang = currentLang;
+}
+
+function setLang(lang) {
+  currentLang = I18N[lang] ? lang : 'fr';
+  localStorage.setItem('oeria-dsm-lang', currentLang);
+  applyI18n();
+}
+
+applyI18n();
+document.querySelectorAll('.lang-toggle-btn').forEach((btn) => {
+  btn.addEventListener('click', () => setLang(currentLang === 'fr' ? 'en' : 'fr'));
 });
 
 // ---- View / server navigation ----
@@ -56,6 +294,7 @@ const GAME_ICONS = {
   fivem: 'car-front-fill',
   '7dtd': 'calendar-week',
   wow: 'shield-fill',
+  hytale: 'box-seam-fill',
 };
 const WOW_VERSION_LABELS = {
   vanilla: 'Vanilla / Classic',
@@ -82,6 +321,7 @@ const GAME_LABELS = {
   fivem: 'FiveM',
   '7dtd': '7 Days to Die',
   wow: 'World of Warcraft',
+  hytale: 'Hytale',
 };
 const DEFAULT_ICON_COLOR = '#1f6fc0';
 
@@ -91,6 +331,11 @@ const ICON_PICKER_PRESETS = [
   'rocket-fill', 'lightning-charge-fill', 'globe', 'wifi', 'gear-fill',
   'star-fill', 'gem', 'trophy-fill', 'fire', 'moon-stars-fill',
   'sun-fill', 'tree-fill', 'lock-fill', 'key-fill', 'flag-fill',
+  'emoji-dizzy-fill', 'award-fill', 'puzzle-fill', 'compass-fill', 'map-fill',
+  'heart-fill', 'diamond-fill', 'rocket-takeoff-fill', 'boxes', 'grid-3x3-gap-fill',
+  'terminal-fill', 'bug-fill', 'droplet-fill', 'snow2', 'palette-fill',
+  'brush-fill', 'building-fill', 'house-fill', 'lightbulb-fill', 'bell-fill',
+  'chat-fill', 'cup-hot-fill', 'binoculars-fill', 'magic', 'radioactive',
 ];
 
 function serverIcon(entry) { return 'bi-' + (entry.icon || GAME_ICONS[entry.game] || 'joystick'); }
@@ -281,7 +526,7 @@ function applyServerConfig(cfg) {
   playersPanel.classList.toggle('view-hidden', !isMinecraft);
   authStatusBadge.classList.toggle('view-hidden', !isWow);
   dbStatusBadge.classList.toggle('view-hidden', !isWow);
-  serverPathEl.textContent = isMinecraft
+  serverPathEl.textContent = isMinecraft || cfg.game === 'hytale'
     ? `${cfg.serverDir}\\${cfg.jarName} • RAM ${cfg.minRam}-${cfg.maxRam}`
     : cfg.game === 'wow' && cfg.wowVersion
     ? `${cfg.serverDir}\\${cfg.exePath} • ${WOW_VERSION_LABELS[cfg.wowVersion] || cfg.wowVersion}`
@@ -339,10 +584,10 @@ let gamePort = null;
 
 function statusLabel(s) {
   switch (s) {
-    case 'running': return 'En ligne';
-    case 'starting': return 'Démarrage...';
-    case 'stopping': return 'Arrêt en cours...';
-    default: return 'Hors ligne';
+    case 'running': return t('status.running');
+    case 'starting': return t('status.starting');
+    case 'stopping': return t('status.stopping');
+    default: return t('status.stopped');
   }
 }
 
@@ -830,6 +1075,7 @@ const newServerGame = el('newServerGame');
 const newServerMcFields = el('newServerMcFields');
 const newServerGmodFields = el('newServerGmodFields');
 const newServerWowFields = el('newServerWowFields');
+const newServerHytaleFields = el('newServerHytaleFields');
 const createServerError = el('createServerError');
 
 function showCreateServerError(message) {
@@ -840,11 +1086,13 @@ function showCreateServerError(message) {
 function toggleCreateFields() {
   const isMc = newServerGame.value === 'minecraft';
   const isWow = newServerGame.value === 'wow';
+  const isHytale = newServerGame.value === 'hytale';
   newServerMcFields.classList.toggle('view-hidden', !isMc);
   // WoW's port and executable are auto-detected from the folder, so those inputs stay out of the way.
-  newServerGmodFields.classList.toggle('view-hidden', isMc || isWow);
+  newServerGmodFields.classList.toggle('view-hidden', isMc || isWow || isHytale);
   el('newServerPortField').classList.toggle('view-hidden', isWow);
   newServerWowFields.classList.toggle('view-hidden', !isWow);
+  newServerHytaleFields.classList.toggle('view-hidden', !isHytale);
   el('newServerName').placeholder = isWow ? 'Laisser vide = nom du dossier' : 'Mon serveur';
   if (isWow) toggleWowBuildAvailability();
 }
@@ -870,7 +1118,7 @@ const wowBuildModal = el('wowBuildModal');
 const wowBuildConsole = el('wowBuildConsole');
 const wowBuildStatusText = el('wowBuildStatusText');
 const wowBuildProgressFill = el('wowBuildProgressFill');
-const WOW_BUILDABLE_VERSIONS = new Set(['wotlk']);
+const WOW_BUILDABLE_VERSIONS = new Set(['vanilla', 'tbc', 'wotlk', 'cata']);
 let currentWowBuildId = null;
 let currentWowBuildStatus = null;
 let wowBuildProgressPercent = 0;
@@ -1063,6 +1311,11 @@ function fillCloneForm(cfg) {
   el('newServerExe').value = cfg.exePath || '';
   el('newServerWowVersion').value = cfg.wowVersion || 'wotlk';
   toggleWowBuildAvailability();
+  el('newServerHytaleJar').value = cfg.jarName || '';
+  el('newServerHytaleJava').value = cfg.javaPath || '';
+  el('newServerHytaleMinRam').value = cfg.minRam || '';
+  el('newServerHytaleMaxRam').value = cfg.maxRam || '';
+  el('newServerAssetsPath').value = cfg.assetsPath || '';
   el('newServerIcon').value = cfg.icon || (GAME_ICONS[cfg.game] || 'bi-joystick').replace(/^bi-/, '');
   el('newServerColor').value = toHexColor(cfg.color) || DEFAULT_ICON_COLOR;
   renderIconPicker('newServerIconGrid', 'newServerIcon', 'newServerColor', 'newServerIconPreview');
@@ -1090,6 +1343,7 @@ createServerForm.addEventListener('submit', (e) => {
   const name = el('newServerName').value.trim();
   const serverDir = el('newServerDir').value.trim();
   const isWowCreate = newServerGame.value === 'wow';
+  const isHytaleCreate = newServerGame.value === 'hytale';
   if ((!name && !isWowCreate) || !serverDir) {
     showCreateServerError('Le nom et le dossier du serveur sont obligatoires.');
     return;
@@ -1101,10 +1355,11 @@ createServerForm.addEventListener('submit', (e) => {
     game: newServerGame.value,
     serverDir,
     gamePort: el('newServerPort').value,
-    jarName: el('newServerJar').value.trim(),
-    javaPath: el('newServerJava').value.trim(),
-    minRam: el('newServerMinRam').value.trim(),
-    maxRam: el('newServerMaxRam').value.trim(),
+    jarName: (isHytaleCreate ? el('newServerHytaleJar') : el('newServerJar')).value.trim(),
+    javaPath: (isHytaleCreate ? el('newServerHytaleJava') : el('newServerJava')).value.trim(),
+    minRam: (isHytaleCreate ? el('newServerHytaleMinRam') : el('newServerMinRam')).value.trim(),
+    maxRam: (isHytaleCreate ? el('newServerHytaleMaxRam') : el('newServerMaxRam')).value.trim(),
+    assetsPath: el('newServerAssetsPath').value.trim(),
     exePath: el('newServerExe').value.trim(),
     wowVersion: el('newServerWowVersion').value,
     icon: el('newServerIcon').value.trim(),
@@ -1125,18 +1380,29 @@ const settingsForm = el('settingsForm');
 const setMcFields = el('setMcFields');
 const setGmodFields = el('setGmodFields');
 const setWowFields = el('setWowFields');
+const setHytaleFields = el('setHytaleFields');
 
 function openSettingsModal() {
   const cfg = serverConfigs.get(currentServerId);
   if (!cfg) return;
   const isMc = cfg.game === 'minecraft';
   const isWow = cfg.game === 'wow';
+  const isHytale = cfg.game === 'hytale';
   setMcFields.classList.toggle('view-hidden', !isMc);
-  setGmodFields.classList.toggle('view-hidden', isMc);
+  setGmodFields.classList.toggle('view-hidden', isMc || isWow || isHytale);
   setWowFields.classList.toggle('view-hidden', !isWow);
+  setHytaleFields.classList.toggle('view-hidden', !isHytale);
   if (isWow) {
     el('setWowVersion').value = cfg.wowVersion || 'wotlk';
     el('setWowAuthExe').value = cfg.authExePath || '';
+    el('setWowExe').value = cfg.exePath || '';
+  }
+  if (isHytale) {
+    el('setHytaleJar').value = cfg.jarName || '';
+    el('setHytaleJava').value = cfg.javaPath || '';
+    el('setHytaleMinRam').value = cfg.minRam || '';
+    el('setHytaleMaxRam').value = cfg.maxRam || '';
+    el('setAssetsPath').value = cfg.assetsPath || '';
   }
 
   el('setName').value = cfg.name || '';
@@ -1160,7 +1426,6 @@ function openSettingsModal() {
 }
 
 el('btnSettings').addEventListener('click', openSettingsModal);
-el('btnEditServer').addEventListener('click', openSettingsModal);
 el('settingsCancel').addEventListener('click', () => settingsModal.classList.remove('show'));
 
 settingsForm.addEventListener('submit', (e) => {
@@ -1187,13 +1452,19 @@ settingsForm.addEventListener('submit', (e) => {
     patch.minRam = el('setMinRam').value.trim();
     patch.maxRam = el('setMaxRam').value.trim();
     patch.extraJavaArgs = el('setExtraArgs').value.trim().split(/\s+/).filter(Boolean);
+  } else if (cfg.game === 'wow') {
+    patch.exePath = el('setWowExe').value.trim();
+    patch.wowVersion = el('setWowVersion').value;
+    patch.authExePath = el('setWowAuthExe').value.trim() || null;
+  } else if (cfg.game === 'hytale') {
+    patch.jarName = el('setHytaleJar').value.trim();
+    patch.javaPath = el('setHytaleJava').value.trim();
+    patch.minRam = el('setHytaleMinRam').value.trim();
+    patch.maxRam = el('setHytaleMaxRam').value.trim();
+    patch.assetsPath = el('setAssetsPath').value.trim();
   } else {
     patch.exePath = el('setExe').value.trim();
     patch.launchArgs = el('setLaunchArgs').value.trim().split(/\s+/).filter(Boolean);
-    if (cfg.game === 'wow') {
-      patch.wowVersion = el('setWowVersion').value;
-      patch.authExePath = el('setWowAuthExe').value.trim() || null;
-    }
   }
 
   socket.emit('servers:updateSettings', { id: currentServerId, patch });

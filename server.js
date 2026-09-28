@@ -35,6 +35,7 @@ const GAME_DEFAULTS = {
   fivem: { port: 30120, exePath: 'FXServer.exe', launchArgs: ['+exec', 'server.cfg'] },
   '7dtd': { port: 26900, exePath: '7DaysToDieServer.exe', launchArgs: [] },
   wow: { port: 8085, exePath: 'worldserver.exe', launchArgs: [] },
+  hytale: { port: 5520 },
 };
 const VALID_GAMES = new Set(['minecraft', ...Object.keys(GAME_DEFAULTS)]);
 
@@ -70,15 +71,41 @@ function detectWowExecutables(serverDir) {
 }
 
 // ---- WoW automated build (compile a core from source into the server folder) ----
-// Neither TrinityCore nor AzerothCore publish precompiled binaries, so "installing" a WoW
-// server means cloning the official source and compiling it with CMake + MSBuild. Only
-// AzerothCore/WotLK has a build reliable enough to automate unattended; other expansions
-// rely on far less standardized community forks, so they're left to manual setup.
+// Neither TrinityCore, AzerothCore nor CMaNGOS publish precompiled binaries, so "installing" a
+// WoW server means cloning the official source and compiling it with CMake + MSBuild.
+// WotLK (AzerothCore) is the one path that's been fully exercised end-to-end; the CMaNGOS-based
+// entries follow the same pipeline (same vcpkg toolchain, same generic CMake configure/build
+// shape) but haven't been build-tested by us — a first attempt may surface a project-specific
+// wrinkle the same way AzerothCore did, which the build log will show clearly enough to fix.
 const WOW_BUILD_REPOS = {
+  vanilla: {
+    label: 'CMaNGOS (Vanilla 1.12)',
+    url: 'https://github.com/cmangos/mangos-classic.git',
+    branch: 'master',
+    targets: ['mangosd', 'realmd'],
+    exeNames: ['mangosd.exe', 'realmd.exe'],
+  },
+  tbc: {
+    label: 'CMaNGOS (TBC 2.4.3)',
+    url: 'https://github.com/cmangos/mangos-tbc.git',
+    branch: 'master',
+    targets: ['mangosd', 'realmd'],
+    exeNames: ['mangosd.exe', 'realmd.exe'],
+  },
   wotlk: {
     label: 'AzerothCore (WotLK 3.3.5a)',
     url: 'https://github.com/azerothcore/azerothcore-wotlk.git',
     branch: 'master',
+    targets: ['authserver', 'worldserver'],
+    exeNames: ['authserver.exe', 'worldserver.exe'],
+    extraConfigureArgs: ['-DTOOLS=0', '-DSCRIPTS=static'],
+  },
+  cata: {
+    label: 'CMaNGOS (Cataclysm 4.3.4)',
+    url: 'https://github.com/cmangos/mangos-cata.git',
+    branch: 'master',
+    targets: ['mangosd', 'realmd'],
+    exeNames: ['mangosd.exe', 'realmd.exe'],
   },
 };
 
@@ -116,10 +143,13 @@ const VCPKG_TRIPLET = 'x64-windows-static-md';
 // the specific libraries it actually requires: filesystem/program-options/iostreams/regex/thread
 // are the ones deps/boost/CMakeLists.txt links against, the rest are headers included directly
 // in src/ (confirmed by grepping the cloned source for every "#include <boost/...>").
+// boost-serialization is added on top of AzerothCore's own list because the CMaNGOS-family
+// cores (vanilla/tbc/cata) require it too: find_package(Boost COMPONENTS ... serialization ...).
 const VCPKG_BOOST_PORTS = [
   'boost-filesystem', 'boost-program-options', 'boost-iostreams', 'boost-regex', 'boost-thread',
   'boost-algorithm', 'boost-asio', 'boost-container', 'boost-dll', 'boost-heap',
   'boost-iterator', 'boost-lexical-cast', 'boost-preprocessor', 'boost-process', 'boost-stacktrace',
+  'boost-serialization',
 ];
 
 function commandExists(cmd) {
@@ -255,6 +285,7 @@ function saveServerDefs() {
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/api/app-info', (req, res) => res.json({ version: appConfig.version || '0.1.0' }));
 
 const server = http.createServer(app);
 const io = new Server(server);
@@ -409,6 +440,25 @@ function buildLaunchSpec(cfg) {
         'nogui',
       ],
       checkFiles: [cfg.javaPath, path.join(cfg.serverDir, cfg.jarName)],
+    };
+  }
+  if (cfg.game === 'hytale') {
+    // Official launch shape per Hypixel Studios' server manual:
+    // java -jar HytaleServer.jar --assets Assets.zip --bind 0.0.0.0:<port>
+    return {
+      command: cfg.javaPath,
+      args: [
+        `-Xms${cfg.minRam}`,
+        `-Xmx${cfg.maxRam}`,
+        ...(cfg.extraJavaArgs || []),
+        '-jar',
+        cfg.jarName,
+        '--assets',
+        cfg.assetsPath,
+        '--bind',
+        `0.0.0.0:${cfg.gamePort}`,
+      ],
+      checkFiles: [cfg.javaPath, path.join(cfg.serverDir, cfg.jarName), cfg.assetsPath],
     };
   }
   // Garry's Mod / generic executable-based server.
@@ -688,20 +738,22 @@ async function runWowBuild(build) {
 
     wowBuildLog(build, '[Dashboard] Configuration CMake...', 'info');
     const configureArgs = [
-      '-S', srcDir, '-B', binDir, '-A', 'x64', '-DTOOLS=0', '-DSCRIPTS=static',
+      '-S', srcDir, '-B', binDir, '-A', 'x64',
+      ...(repo.extraConfigureArgs || []),
       `-DCMAKE_TOOLCHAIN_FILE=${path.join(VCPKG_DIR, 'scripts', 'buildsystems', 'vcpkg.cmake')}`,
       `-DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET}`,
     ];
     if (build.mysqlRoot && build.mysqlRoot !== 'PATH') configureArgs.push(`-DMYSQL_ROOT_DIR=${build.mysqlRoot}`);
     await runWowBuildStep(build, build.cmakeExe, configureArgs, workDir);
 
-    wowBuildLog(build, '[Dashboard] Compilation en cours (authserver + worldserver)... cela peut prendre 20 à 60 minutes.', 'info');
-    await runWowBuildStep(build, build.cmakeExe, [
-      '--build', binDir, '--config', 'RelWithDebInfo', '--target', 'authserver', '--target', 'worldserver', '--', '/m',
-    ], workDir);
+    wowBuildLog(build, `[Dashboard] Compilation en cours (${repo.targets.join(' + ')})... cela peut prendre 20 à 60 minutes.`, 'info');
+    const buildArgs = ['--build', binDir, '--config', 'RelWithDebInfo'];
+    for (const t of repo.targets) buildArgs.push('--target', t);
+    buildArgs.push('--', '/m');
+    await runWowBuildStep(build, build.cmakeExe, buildArgs, workDir);
 
     wowBuildLog(build, '[Dashboard] Copie des exécutables dans le dossier du serveur...', 'info');
-    const exeFiles = findFilesRecursive(binDir, new Set(['worldserver.exe', 'authserver.exe']));
+    const exeFiles = findFilesRecursive(binDir, new Set(repo.exeNames));
     if (exeFiles.length === 0) throw new Error('Compilation terminée mais aucun exécutable trouvé dans le dossier de build.');
 
     const copiedDirs = new Set();
@@ -717,16 +769,19 @@ async function runWowBuild(build) {
       if (fs.existsSync(configsDir)) fs.cpSync(configsDir, path.join(build.serverDir, 'configs'), { recursive: true });
     }
 
-    // AzerothCore ships only *.conf.dist templates — it refuses to start without the real
+    // These cores ship only *.conf.dist templates — they refuse to start without the real
     // *.conf file, which admins normally create by hand. Bootstrapped here with the untouched
     // defaults (only if the real file doesn't already exist, so a re-run never clobbers
-    // settings someone already customized).
+    // settings someone already customized). Scanning for "*.conf.dist" rather than hardcoding
+    // authserver/worldserver works for the mangosd/realmd naming CMaNGOS uses too.
     const serverConfigsDir = path.join(build.serverDir, 'configs');
-    for (const name of ['authserver', 'worldserver']) {
-      const dist = path.join(serverConfigsDir, `${name}.conf.dist`);
-      const real = path.join(serverConfigsDir, `${name}.conf`);
-      if (fs.existsSync(dist) && !fs.existsSync(real)) fs.copyFileSync(dist, real);
-    }
+    try {
+      for (const f of fs.readdirSync(serverConfigsDir)) {
+        if (!f.endsWith('.conf.dist')) continue;
+        const real = path.join(serverConfigsDir, f.replace(/\.dist$/, ''));
+        if (!fs.existsSync(real)) fs.copyFileSync(path.join(serverConfigsDir, f), real);
+      }
+    } catch (e) {}
 
     // libmysql.lib is only the *import* library used at link time — the actual libmysql.dll
     // runtime dependency (and libmysql.dll's own dependency on MySQL's bundled OpenSSL DLLs)
@@ -1111,6 +1166,7 @@ function publicConfig(cfg) {
     javaPath: cfg.javaPath,
     minRam: cfg.minRam,
     maxRam: cfg.maxRam,
+    assetsPath: cfg.assetsPath || null,
     extraJavaArgs: cfg.extraJavaArgs || [],
     exePath: cfg.exePath,
     authExePath: cfg.authExePath || null,
@@ -1137,6 +1193,8 @@ function createServer(payload = {}) {
   while (runtimes.has(id)) { id = `${slugify(name)}-${suffix++}`; }
 
   const isMinecraft = game === 'minecraft';
+  const isHytale = game === 'hytale';
+  const isJavaBased = isMinecraft || isHytale;
   const defaults = GAME_DEFAULTS[game] || {};
   const wowExe = game === 'wow' ? detectWowExecutables(payload.serverDir) : null;
 
@@ -1146,14 +1204,15 @@ function createServer(payload = {}) {
     game,
     serverDir: payload.serverDir,
     gamePort: Number(payload.gamePort) || defaults.port || 25565,
-    jarName: isMinecraft ? (payload.jarName || 'server.jar') : null,
-    javaPath: isMinecraft ? (payload.javaPath || '') : null,
-    minRam: isMinecraft ? (payload.minRam || '1G') : null,
-    maxRam: isMinecraft ? (payload.maxRam || '4G') : null,
-    extraJavaArgs: isMinecraft ? [] : [],
-    exePath: isMinecraft ? null : (game === 'wow' ? (wowExe.worldExe || defaults.exePath || '') : (payload.exePath || defaults.exePath || '')),
+    jarName: isJavaBased ? (payload.jarName || (isHytale ? 'HytaleServer.jar' : 'server.jar')) : null,
+    javaPath: isJavaBased ? (payload.javaPath || '') : null,
+    minRam: isJavaBased ? (payload.minRam || '1G') : null,
+    maxRam: isJavaBased ? (payload.maxRam || (isHytale ? '6G' : '4G')) : null,
+    extraJavaArgs: isJavaBased ? [] : [],
+    assetsPath: isHytale ? (payload.assetsPath || '') : null,
+    exePath: isJavaBased ? null : (game === 'wow' ? (wowExe.worldExe || defaults.exePath || '') : (payload.exePath || defaults.exePath || '')),
     authExePath: game === 'wow' ? (wowExe.authExe || null) : null,
-    launchArgs: isMinecraft ? [] : (defaults.launchArgs || []),
+    launchArgs: isJavaBased ? [] : (defaults.launchArgs || []),
     wowVersion: game === 'wow' ? (WOW_VERSIONS.has(payload.wowVersion) ? payload.wowVersion : DEFAULT_WOW_VERSION) : null,
     stopTimeoutMs: 30000,
     limits: { cpuMaxPercent: 100, ramMaxMB: null, storageMaxGB: null },
@@ -1207,7 +1266,7 @@ function updateServerSettings(id, patch = {}) {
   if (!rt) return;
   const cfg = rt.cfg;
   const editable = [
-    'name', 'gamePort', 'jarName', 'javaPath', 'minRam', 'maxRam',
+    'name', 'gamePort', 'jarName', 'javaPath', 'minRam', 'maxRam', 'assetsPath',
     'extraJavaArgs', 'exePath', 'authExePath', 'launchArgs', 'stopTimeoutMs', 'icon', 'color',
   ];
   for (const key of editable) {
@@ -1324,7 +1383,7 @@ io.on('connection', (socket) => {
     if (typeof ack !== 'function') return;
     if (!serverDir) { ack({ error: 'Dossier du serveur requis.' }); return; }
     if (!WOW_BUILD_REPOS[versionKey]) {
-      ack({ error: 'Compilation automatique disponible uniquement pour Wrath of the Lich King (AzerothCore) pour le moment.' });
+      ack({ error: "Compilation automatique non disponible pour cette version — aucun projet open source fiable et standardisé n'existe pour celle-ci pour le moment." });
       return;
     }
     const existing = [...wowBuilds.values()].find((b) => b.serverDir === serverDir && b.status === 'running');

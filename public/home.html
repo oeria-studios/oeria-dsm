@@ -1,0 +1,72 @@
+  <div id="homeView">
+    <header class="home-topbar">
+      <div class="brand">
+        <img src="logo.png" alt="OERIA-DSM" class="brand-logo">
+      </div>
+      <div class="top-toggles">
+        <button class="theme-toggle lang-toggle-btn" data-i18n-title="topbar.changeLang" title="Changer de langue">
+          <span class="lang-flag"><svg viewBox="0 0 3 2" width="20" height="14"><rect width="1" height="2" x="0" fill="#0055A4"/><rect width="1" height="2" x="1" fill="#FFFFFF"/><rect width="1" height="2" x="2" fill="#EF4135"/></svg></span>
+        </button>
+        <button class="theme-toggle theme-toggle-btn" data-i18n-title="topbar.changeTheme" title="Changer de thème">
+          <i class="bi bi-moon-stars-fill theme-icon"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="home-layout">
+      <section class="server-list-panel">
+        <div class="server-search">
+          <i class="bi bi-search"></i>
+          <input type="text" id="serverSearchInput" data-i18n-placeholder="home.search" placeholder="Rechercher un serveur...">
+        </div>
+        <div class="server-list" id="serverGrid">
+          <div class="server-grid-empty" id="serverGridEmpty" data-i18n="home.emptyGrid">Aucun serveur pour le moment.</div>
+        </div>
+
+        <div class="home-create">
+          <button class="pill pill-start" id="btnCreateServer">
+            <i class="bi bi-plus-circle-fill pill-icon"></i> <span data-i18n="home.createServer">Créer un serveur</span>
+          </button>
+        </div>
+      </section>
+
+      <aside class="home-stats-panel">
+        <div class="home-stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-cpu-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label" data-i18n="home.totalCpu">CPU total</span>
+              <span class="stat-value" id="totalCpuValue">0 %</span>
+            </div>
+          </div>
+        </div>
+        <div class="home-stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-memory"></i></div>
+            <div class="stat-text">
+              <span class="stat-label" data-i18n="home.totalRam">RAM totale</span>
+              <span class="stat-value" id="totalRamValue">0 ko</span>
+            </div>
+          </div>
+        </div>
+        <div class="home-stat-card">
+          <div class="stat-top">
+            <div class="stat-icon"><i class="bi bi-hdd-fill"></i></div>
+            <div class="stat-text">
+              <span class="stat-label" data-i18n="home.totalDisk">Stockage total</span>
+              <span class="stat-value" id="totalDiskValue">0 Go</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="home-links">
+          <a class="pill pill-ghost" href="https://github.com/oeria-studios/oeria-dsm/wiki" target="_blank" rel="noopener noreferrer">
+            <i class="bi bi-book-half pill-icon"></i> <span data-i18n="home.documentation">Documentation</span>
+          </a>
+          <a class="pill pill-ghost" href="https://discord.gg/rYcqCXvgPF" target="_blank" rel="noopener noreferrer">
+            <i class="bi bi-discord pill-icon"></i> Discord
+          </a>
+        </div>
+      </aside>
+    </div>
+  </div>
