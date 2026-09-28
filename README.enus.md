@@ -21,8 +21,9 @@
 
 ### 🍃 Launching the Dashboard
 - Step 1 -> Run Windows PowerShell as administrator
-- Step 2 -> Type `cd <path to the oeria-dsm folder>`
-- Step 3 -> In the terminal, type `npm start`
+- Step 2 -> `cd <path to the oeria-dsm folder>`
+- Step 3 -> `npm install` (for the first launch)
+- Step 4 -> `npm start`
 
 ### 🔥 Compatible Games
 - Minecraft
