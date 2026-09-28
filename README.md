@@ -21,8 +21,9 @@
 
 ### 🍃 Lancer le dashboard
 - Étape 1 -> Exécuter windows powershell en administrateur
-- Étape 2 -> taper `cd <chemin d'accès vers le dossier oeria-dsm>`
-- Étape 3 -> dans le terminal taper `npm start`
+- Étape 2 -> `cd <chemin d'accès vers le dossier oeria-dsm>`
+- Étape 3 -> `npm install` (pour le premier lancement)
+- Étape 4 -> `npm start`
 
 ### 🔥 Jeux compatible
 - Minecraft
