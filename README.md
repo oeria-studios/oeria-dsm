@@ -6,7 +6,7 @@
     <img src="https://img.shields.io/github/v/release/oeria-studios/oeria-dsm?style=for-the-badge" alt="release">
   </a>
   <a href="https://github.com/oeria-studios/oeria-dsm/releases/tag/v0.2.0">
-    <img src="https://img.shields.io/github/downloads/oeria-studios/oeria-dsm/total.svg?style=for-the-badge" alt="downloads">
+    <img src="https://img.shields.com/github/downloads/oeria-studios/oeria-dsm/total?style=for-the-badge" alt="downloads">
   </a>
 </p>
 
