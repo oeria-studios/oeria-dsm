@@ -45,6 +45,16 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="severityModal">
+    <div class="modal modal-wide modal-logs">
+      <h3><i class="bi bi-exclamation-triangle-fill" id="severityModalIcon"></i> <span id="severityModalTitle">Erreurs</span></h3>
+      <div class="console logs-console severity-console" id="severityConsole"></div>
+      <div class="modal-actions">
+        <button type="button" class="pill pill-ghost" id="severityClose" data-i18n="common.close">Fermer</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="filesModal">
     <div class="modal modal-files">
       <h3><i class="bi bi-file-earmark-text-fill"></i> <span data-i18n="files.title">Fichiers de configuration</span></h3>
@@ -173,9 +183,14 @@
               </select>
             </label>
 
-            <button type="button" class="pill pill-ghost" id="btnWowBuild" data-i18n-title="create.wowBuildTitleAttr" title="Nécessite Git, CMake et Visual Studio (Desktop C++). Clone et compile les serveurs dans le dossier ci-dessus — 20 à 60 minutes. Seul WotLK a été testé de bout en bout ; les autres versions utilisent le même pipeline mais peuvent révéler un souci spécifique au premier essai.">
-              <i class="bi bi-cloud-download-fill pill-icon"></i> <span data-i18n="create.wowBuild">Compiler et installer</span>
-            </button>
+            <div class="settings-row">
+              <button type="button" class="pill pill-start" id="btnWowBuild" data-i18n-title="create.wowBuildTitleAttr" title="Clone, compile et crée automatiquement le serveur dans le dossier ci-dessus (20 à 60 minutes) — un seul clic. Nécessite Git, CMake et Visual Studio (Desktop C++), voir le bouton Dépendances. Seul WotLK a été testé de bout en bout ; les autres versions utilisent le même pipeline mais peuvent révéler un souci spécifique au premier essai.">
+                <i class="bi bi-cloud-download-fill pill-icon"></i> <span data-i18n="create.wowBuild">Compiler</span>
+              </button>
+              <button type="button" class="pill pill-ghost" id="btnWowDeps">
+                <i class="bi bi-list-check pill-icon"></i> <span data-i18n="create.wowDeps">Dépendances</span>
+              </button>
+            </div>
             <p class="settings-hint wow-build-note view-hidden" id="wowBuildVersionNote" data-i18n="create.wowVersionNote">Pas de projet open source fiable pour cette version — installation manuelle requise.</p>
           </div>
 
@@ -230,14 +245,38 @@
 
   <div class="modal-overlay" id="wowBuildModal">
     <div class="modal modal-wow-build">
-      <h3><i class="bi bi-hammer"></i> <span data-i18n="wowBuild.title">Compilation AzerothCore</span></h3>
+      <h3><i class="bi bi-hammer"></i> <span id="wowBuildModalTitle" data-i18n="wowBuild.title">Compilation</span></h3>
       <p class="wow-build-status" id="wowBuildStatusText" data-i18n="wowBuild.starting">Démarrage...</p>
       <div class="console wow-build-console" id="wowBuildConsole"></div>
       <div class="modal-actions">
         <div class="wow-build-progress" id="wowBuildProgress">
           <div class="wow-build-progress-fill" id="wowBuildProgressFill"></div>
         </div>
+        <button type="button" class="pill pill-ghost" id="wowBuildExport"><i class="bi bi-download pill-icon"></i> <span data-i18n="common.export">Exporter</span></button>
         <button type="button" class="pill pill-ghost" id="wowBuildClose" data-i18n="common.close">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="wowDepsModal">
+    <div class="modal modal-wow-deps">
+      <h3><i class="bi bi-list-check"></i> <span data-i18n="wowDeps.title">Dépendances de compilation WoW</span></h3>
+      <ul class="wow-deps-list" id="wowDepsList">
+        <li class="wow-deps-item" data-dep="git"><i class="bi bi-circle wow-deps-icon"></i> <span>Git</span><span class="wow-deps-status"></span></li>
+        <li class="wow-deps-item" data-dep="cmake"><i class="bi bi-circle wow-deps-icon"></i> <span>CMake</span><span class="wow-deps-status"></span></li>
+        <li class="wow-deps-item" data-dep="visualStudio"><i class="bi bi-circle wow-deps-icon"></i> <span>Visual Studio (Desktop C++)</span><span class="wow-deps-status"></span></li>
+        <li class="wow-deps-item" data-dep="boostOpenssl"><i class="bi bi-circle wow-deps-icon"></i> <span>Boost + OpenSSL (vcpkg)</span><span class="wow-deps-status"></span></li>
+        <li class="wow-deps-item" data-dep="mysql"><i class="bi bi-circle wow-deps-icon"></i> <span>MySQL</span><span class="wow-deps-status"></span></li>
+      </ul>
+      <p class="settings-hint" data-i18n="wowDeps.hint">Git, CMake et Visual Studio doivent être installés manuellement (liens ci-dessous). Boost, OpenSSL et MySQL peuvent être installés automatiquement.</p>
+      <p class="settings-hint">
+        <a href="https://git-scm.com/downloads" target="_blank" rel="noopener noreferrer">git-scm.com</a> ·
+        <a href="https://visualstudio.microsoft.com/downloads/" target="_blank" rel="noopener noreferrer">Visual Studio</a>
+        (<span data-i18n="wowDeps.vsHint">cocher "Desktop development with C++" à l'installation, CMake est inclus</span>)
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="pill pill-start" id="btnWowDepsInstall"><i class="bi bi-cloud-download-fill pill-icon"></i> <span data-i18n="wowDeps.install">Installer Boost/OpenSSL/MySQL</span></button>
+        <button type="button" class="pill pill-ghost" id="wowDepsClose" data-i18n="common.close">Fermer</button>
       </div>
     </div>
   </div>

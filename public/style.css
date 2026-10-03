@@ -363,6 +363,20 @@ html, body {
 .console-line.warn { color: #ffbf69; }
 .console-line.command { color: #6fb1ff; font-weight: 600; }
 
+/* The live console packs lines tight on purpose (it's a fast-scrolling feed), but a curated
+   error/warning list reads better as separated cards — one glance per entry instead of a wall
+   of text running together. */
+.severity-console { display: flex; flex-direction: column; gap: 8px; }
+.severity-console .console-line {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-left-width: 3px;
+}
+.severity-console .console-line.error { border-left-color: #ff7b8a; }
+.severity-console .console-line.warn { border-left-color: #ffbf69; }
+
 .log-time { color: #4d5b80; }
 .log-bracket { color: #3d4a6b; }
 .log-thread { color: #7d8db3; font-style: italic; }
@@ -541,7 +555,7 @@ html, body {
 
 /* ---- Home view ---- */
 .home-topbar {
-  display: flex; align-items: center;
+  display: flex; align-items: center; justify-content: space-between;
   padding: 24px 28px 8px;
 }
 
@@ -711,6 +725,24 @@ html, body {
 
 #wowBuildModal { z-index: 11; }
 .modal-wow-build { max-width: 560px; width: 100%; }
+.modal-wow-deps { max-width: 460px; width: 100%; }
+.wow-deps-list { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.wow-deps-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--track);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+.wow-deps-icon { font-size: 16px; color: var(--muted); }
+.wow-deps-status { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--muted); }
+.wow-deps-item.deps-ok .wow-deps-status { color: var(--green); }
+.wow-deps-item.deps-missing .wow-deps-status { color: var(--red-dark); }
+.wow-deps-item.deps-ok .wow-deps-icon { color: var(--green); }
+.wow-deps-item.deps-missing .wow-deps-icon { color: var(--red-dark); }
 .wow-build-console { height: 320px; border-radius: 10px; padding: 10px 14px; font-size: 12px; margin-top: 4px; }
 .wow-build-status { font-size: 13px; font-weight: 600; margin: -8px 0 0; }
 .wow-build-status.status-running { color: var(--blue, #6fb1ff); }
@@ -951,7 +983,6 @@ html, body {
   .topbar { flex-direction: column; align-items: flex-start; gap: 10px; }
   .topbar-right { width: 100%; justify-content: space-between; }
   .server-path { text-align: left; }
-  .top-toggles-floating { padding: 14px 14px 0; }
   .home-layout { grid-template-columns: 1fr; }
   .home-stats-panel { flex-direction: row; flex-wrap: wrap; }
   .home-stat-card { flex: 1; min-width: 160px; }

@@ -77,6 +77,10 @@ function detectWowExecutables(serverDir) {
 // entries follow the same pipeline (same vcpkg toolchain, same generic CMake configure/build
 // shape) but haven't been build-tested by us — a first attempt may surface a project-specific
 // wrinkle the same way AzerothCore did, which the build log will show clearly enough to fix.
+// CMaNGOS's own dep/CMakeLists.txt hooks add_library()/add_executable() the same way vcpkg's
+// toolchain does (both preserve "the previous definition" under a leading-underscore name) —
+// the collision between the two is patched out post-clone (see patchCmangosAddLibraryRecursion)
+// rather than avoided, so all of these use the same vcpkg toolchain injection as AzerothCore.
 const WOW_BUILD_REPOS = {
   vanilla: {
     label: 'CMaNGOS (Vanilla 1.12)',
@@ -103,6 +107,15 @@ const WOW_BUILD_REPOS = {
   cata: {
     label: 'CMaNGOS (Cataclysm 4.3.4)',
     url: 'https://github.com/cmangos/mangos-cata.git',
+    branch: 'master',
+    targets: ['mangosd', 'realmd'],
+    exeNames: ['mangosd.exe', 'realmd.exe'],
+  },
+  // Official MaNGOS lineage (getmangos.eu) for MoP, but the project labels itself "Early Alpha"
+  // — genuinely less mature than the others here, not just "untested by us".
+  mop: {
+    label: 'MaNGOS Four (MoP 5.4.8, Early Alpha)',
+    url: 'https://github.com/mangosfour/server.git',
     branch: 'master',
     targets: ['mangosd', 'realmd'],
     exeNames: ['mangosd.exe', 'realmd.exe'],
@@ -519,9 +532,38 @@ function startWowAuthProcess(rt) {
 // ---- WoW: shared MySQL instance ----
 function runCommandAsync(command, args) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, { stdio: 'ignore' });
+    const proc = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
     proc.on('error', reject);
-    proc.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${command} a échoué (code ${code}).`))));
+    proc.on('exit', (code) => {
+      if (code === 0) { resolve(); return; }
+      const detail = stderr.trim().split('\n').pop();
+      reject(new Error(`${command} a échoué (code ${code})${detail ? ` : ${detail.slice(0, 300)}` : '.'}`));
+    });
+  });
+}
+
+function runCommandCapture(command, args) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args);
+    let out = '';
+    proc.stdout.on('data', (d) => { out += d.toString(); });
+    proc.on('error', reject);
+    proc.on('exit', (code) => (code === 0 ? resolve(out) : reject(new Error(`${command} a échoué (code ${code}).`))));
+  });
+}
+
+// Streaming the file into mysql's stdin (rather than `-e "source <path>"`) sidesteps any
+// escaping/backslash issues with Windows paths and works regardless of file size.
+function runMysqlImport(mysqlCliExe, dbName, sqlFilePath) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(mysqlCliExe, ['-h', '127.0.0.1', '-P', String(WOW_MYSQL_PORT), '-u', 'root', dbName]);
+    fs.createReadStream(sqlFilePath).pipe(proc.stdin);
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('error', reject);
+    proc.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${path.basename(sqlFilePath)} (code ${code}): ${stderr.slice(0, 300)}`))));
   });
 }
 
@@ -530,6 +572,11 @@ function runCommandAsync(command, args) {
 // likely antivirus real-time scanning briefly locking the freshly-written tablespace files) —
 // it reliably works within a couple of retries, so failure here just means "try spawning again"
 // rather than a real problem with the install.
+// "Didn't crash within N ms" is not the same as "is accepting connections" — mysqld can take
+// well over 4s to finish initializing its listener (slower disk, antivirus scanning, a machine
+// still busy from the build that just finished), and reporting ready too early just moves this
+// same failure to whatever tries to connect next (the game server, or our own db bootstrap SQL).
+// So this polls the port itself instead of trusting a fixed grace period.
 function trySpawnMysqldOnce(mysqldExe, timeoutMs) {
   return new Promise((resolve, reject) => {
     const proc = spawn(mysqldExe, [
@@ -542,19 +589,331 @@ function trySpawnMysqldOnce(mysqldExe, timeoutMs) {
     let exited = false;
     proc.once('exit', () => { exited = true; });
     proc.once('error', () => { exited = true; });
-    setTimeout(() => (exited ? reject(new Error('mysqld a quitté immédiatement')) : resolve(proc)), timeoutMs);
+
+    const deadline = Date.now() + timeoutMs;
+    const poll = async () => {
+      if (exited) { reject(new Error('mysqld a quitté immédiatement')); return; }
+      if (await checkPortOpen(WOW_MYSQL_PORT, 500)) { resolve(proc); return; }
+      if (Date.now() >= deadline) { reject(new Error("mysqld n'écoute toujours pas sur le port après le délai imparti")); return; }
+      setTimeout(poll, 500);
+    };
+    setTimeout(poll, 500);
   });
 }
 
 let wowMysqlEnsurePromise = null;
 
+// Each core family expects its own MySQL user/database names — AzerothCore always uses
+// acore/acore_*, CMaNGOS always uses mangos/mangos but the database name *prefix* varies by
+// expansion (confirmed so far only for vanilla; tbc/cata are a best guess). The wildcard grant
+// on `%`.* means even an unlisted/guessed-wrong database name still lets that user connect and
+// self-provision it, rather than failing outright — only vanilla's names are pinned exactly
+// since those were confirmed from a real generated .conf file.
+const WOW_DB_BOOTSTRAP = {
+  wotlk: { user: 'acore', password: 'acore', databases: ['acore_auth', 'acore_world', 'acore_characters'] },
+  vanilla: { user: 'mangos', password: 'mangos', databases: ['classicrealmd', 'classicmangos', 'classiccharacters', 'classiclogs'] },
+  tbc: { user: 'mangos', password: 'mangos', databases: [] },
+  cata: { user: 'mangos', password: 'mangos', databases: [] },
+  mop: { user: 'mangos', password: 'mangos', databases: [] },
+};
+
+// Idempotent (CREATE ... IF NOT EXISTS throughout) and cheap, so it's safe to run on every
+// server start rather than only the first time MySQL itself is initialized — otherwise a
+// second WoW server using a different core family than the first would never get its own
+// user/databases created, since MySQL would already be running and skip past that step.
+async function mysqlIsDatabaseEmpty(mysqlCliExe, dbName) {
+  const out = await runCommandCapture(mysqlCliExe, [
+    '-h', '127.0.0.1', '-P', String(WOW_MYSQL_PORT), '-u', 'root', '-N', '-B', '-e',
+    `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${dbName}';`,
+  ]);
+  return parseInt(out.trim(), 10) === 0;
+}
+
+// Unlike AzerothCore, CMaNGOS's own binaries never create or update their schema — the error
+// message it prints literally says "Reinstall your database with the included sql file".
+// Admins normally do this by hand (sql/base/<name>.sql, then every sql/updates/<name>/*.sql in
+// order); automated here instead, gated on the database actually being empty so it only runs
+// once. WOW_CMANGOS_SQL_MAP's values are the base filename/subfolder name — the CMaNGOS
+// convention keeps these the same (realmd/mangos/characters/logs) across expansions, only the
+// database *name* prefix (classicrealmd, tbcrealmd, ...) is expected to change.
+const WOW_CMANGOS_SQL_MAP = { realmd: 'realmd', mangos: 'mangos', characters: 'characters', logs: 'logs' };
+// Table holding the single `required_<last-applied-update-filename>` tracking column — every
+// core follows the "<base>_db_version" pattern except the world db, which is just "db_version".
+const WOW_CMANGOS_VERSION_TABLE = { realmd: 'realmd_db_version', mangos: 'db_version', characters: 'character_db_version', logs: 'logs_db_version' };
+
+// Unlike the other CMaNGOS-family cores, mop's source repo (mangosfour/server) doesn't bundle a
+// sql/ folder at all — its schema lives in a separate repo with its own Setup/Updates layout per
+// database, and "Realm" is itself a nested submodule of that repo (mangos/Realm_DB).
+const MANGOSFOUR_DB_REPO = { url: 'https://github.com/mangosfour/database.git', branch: 'master' };
+// Keyed by the same baseName patchWowConfDatabaseCredentials() already derives from each
+// *DatabaseInfo line (realmd/mangos/characters), so the two line up without a separate mapping.
+const MANGOSFOUR_DB_LAYOUT = {
+  realmd: { folder: 'Realm', loadFile: 'realmdLoadDB.sql' },
+  mangos: { folder: 'World', loadFile: 'mangosdLoadDB.sql', fullDbDir: 'FullDB' },
+  characters: { folder: 'Character', loadFile: 'characterLoadDB.sql' },
+};
+
+// Update files live under "<folder>/Updates/<release>/*.sql" (e.g. Rel22, Rel23, one folder per
+// past release); applied oldest-release-first, alphabetically within each, same order the
+// project's own InstallDatabases.sh uses.
+function listMangosFourUpdateFiles(dbRepoDir, folder) {
+  const updatesDir = path.join(dbRepoDir, folder, 'Updates');
+  let releaseDirs;
+  try {
+    releaseDirs = fs.readdirSync(updatesDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  } catch (e) {
+    return [];
+  }
+  const files = [];
+  for (const rel of releaseDirs) {
+    const relDir = path.join(updatesDir, rel);
+    for (const f of fs.readdirSync(relDir).filter((f) => f.endsWith('.sql')).sort()) {
+      files.push(path.join(relDir, f));
+    }
+  }
+  return files;
+}
+
+async function ensureMangosFourWorldData(rt, mysqlCliExe, discovered) {
+  const dbRepoDir = path.join(rt.cfg.serverDir, '_build', 'database');
+  if (!fs.existsSync(path.join(dbRepoDir, '.git'))) {
+    pushLog(rt, '[Dashboard] Téléchargement de la base de données MaNGOS Four (mangosfour/database, peut prendre quelques minutes)...', 'info');
+    try {
+      await runCommandAsync('git', [
+        'clone', '--depth', '1', '--recurse-submodules', '--shallow-submodules',
+        '--branch', MANGOSFOUR_DB_REPO.branch, MANGOSFOUR_DB_REPO.url, dbRepoDir,
+      ]);
+    } catch (e) {
+      pushLog(rt, `[Dashboard] Échec du téléchargement de la base de données MaNGOS Four : ${e.message}`, 'error');
+      return;
+    }
+  }
+
+  for (const { dbName, baseName } of discovered) {
+    const layout = MANGOSFOUR_DB_LAYOUT[baseName];
+    if (!layout) continue;
+    let isEmpty;
+    try {
+      isEmpty = await mysqlIsDatabaseEmpty(mysqlCliExe, dbName);
+    } catch (e) {
+      pushLog(rt, `[Dashboard] Impossible de vérifier si ${dbName} est vide : ${e.message}`, 'warn');
+      continue;
+    }
+    if (!isEmpty) continue;
+
+    pushLog(rt, `[Dashboard] Création de la structure de ${dbName}...`, 'info');
+    try {
+      await runMysqlImport(mysqlCliExe, dbName, path.join(dbRepoDir, layout.folder, 'Setup', layout.loadFile));
+    } catch (e) {
+      pushLog(rt, `[Dashboard] Échec de la création de la structure de ${dbName} : ${e.message}`, 'error');
+      continue;
+    }
+
+    if (layout.fullDbDir) {
+      const fullDbDir = path.join(dbRepoDir, layout.folder, 'Setup', layout.fullDbDir);
+      let fullFiles = [];
+      try {
+        fullFiles = fs.readdirSync(fullDbDir).filter((f) => f.endsWith('.sql')).sort();
+      } catch (e) {}
+      if (fullFiles.length > 0) {
+        pushLog(rt, `[Dashboard] Import du contenu du monde pour ${dbName} (${fullFiles.length} fichiers, peut prendre plusieurs minutes)...`, 'info');
+        for (const f of fullFiles) {
+          try {
+            await runMysqlImport(mysqlCliExe, dbName, path.join(fullDbDir, f));
+          } catch (e) {
+            pushLog(rt, `[Dashboard] Échec de l'import de ${f} pour ${dbName} : ${e.message}`, 'warn');
+          }
+        }
+      }
+    }
+
+    const updateFiles = listMangosFourUpdateFiles(dbRepoDir, layout.folder);
+    if (updateFiles.length > 0) {
+      pushLog(rt, `[Dashboard] Application de ${updateFiles.length} mise(s) à jour SQL pour ${dbName}...`, 'info');
+      for (const f of updateFiles) {
+        try {
+          await runMysqlImport(mysqlCliExe, dbName, f);
+        } catch (e) {
+          pushLog(rt, `[Dashboard] Échec de la mise à jour ${path.basename(f)} pour ${dbName} : ${e.message}`, 'warn');
+        }
+      }
+    }
+    pushLog(rt, `[Dashboard] Base ${dbName} prête.`, 'info');
+  }
+}
+
+// Each update file does `ALTER TABLE ... CHANGE COLUMN required_<previous> required_<this> bit`,
+// so it only applies cleanly directly on top of the exact update named by the *previous* column —
+// applying every file in the folder (including ones the base dump's schema already includes)
+// breaks this chain immediately. The base dump's own column names the last update it already
+// contains, so this finds that file in the sorted list and returns everything strictly after it.
+async function getWowDbVersionColumn(mysqlCliExe, dbName, versionTable) {
+  const out = await runCommandCapture(mysqlCliExe, [
+    '-h', '127.0.0.1', '-P', String(WOW_MYSQL_PORT), '-u', 'root', '-N', '-B', '-e',
+    `SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema='${dbName}' AND table_name='${versionTable}' AND column_name LIKE 'required_%' LIMIT 1;`,
+  ]);
+  return out.trim() || null;
+}
+
+async function importCmangosDatabaseIfEmpty(rt, mysqlCliExe, dbName, baseName, sqlRootDir) {
+  let isEmpty;
+  try {
+    isEmpty = await mysqlIsDatabaseEmpty(mysqlCliExe, dbName);
+  } catch (e) {
+    pushLog(rt, `[Dashboard] Impossible de vérifier si ${dbName} est vide : ${e.message}`, 'warn');
+    return;
+  }
+  if (!isEmpty) return;
+
+  const baseFile = path.join(sqlRootDir, 'base', `${baseName}.sql`);
+  if (fs.existsSync(baseFile)) {
+    pushLog(rt, `[Dashboard] Import du schéma de base pour ${dbName} (peut prendre plusieurs minutes)...`, 'info');
+    try {
+      await runMysqlImport(mysqlCliExe, dbName, baseFile);
+    } catch (e) {
+      pushLog(rt, `[Dashboard] Échec de l'import du schéma de base pour ${dbName} : ${e.message}`, 'error');
+      return;
+    }
+  } else {
+    pushLog(rt, `[Dashboard] Fichier SQL de base introuvable pour ${dbName} : ${baseFile}`, 'warn');
+    return;
+  }
+
+  const updatesDir = path.join(sqlRootDir, 'updates', baseName);
+  let updateFiles = [];
+  try {
+    updateFiles = fs.readdirSync(updatesDir).filter((f) => f.endsWith('.sql')).sort();
+  } catch (e) {}
+
+  const versionTable = WOW_CMANGOS_VERSION_TABLE[baseName];
+  if (versionTable) {
+    try {
+      const col = await getWowDbVersionColumn(mysqlCliExe, dbName, versionTable);
+      if (col) {
+        const stem = col.replace(/^required_/, '');
+        const idx = updateFiles.findIndex((f) => f === `${stem}.sql`);
+        if (idx >= 0) {
+          updateFiles = updateFiles.slice(idx + 1);
+        } else {
+          pushLog(rt, `[Dashboard] Révision actuelle (${stem}) introuvable parmi les mises à jour disponibles pour ${dbName} — application de toutes les mises à jour.`, 'warn');
+        }
+      }
+    } catch (e) {
+      pushLog(rt, `[Dashboard] Impossible de déterminer la révision actuelle de ${dbName} : ${e.message}`, 'warn');
+    }
+  }
+
+  if (updateFiles.length > 0) {
+    pushLog(rt, `[Dashboard] Application de ${updateFiles.length} mise(s) à jour SQL pour ${dbName}...`, 'info');
+    for (const f of updateFiles) {
+      try {
+        await runMysqlImport(mysqlCliExe, dbName, path.join(updatesDir, f));
+      } catch (e) {
+        pushLog(rt, `[Dashboard] Échec de la mise à jour ${f} pour ${dbName} : ${e.message}`, 'warn');
+      }
+    }
+  }
+  pushLog(rt, `[Dashboard] Base ${dbName} prête.`, 'info');
+}
+
+// Default *.conf.dist templates across the MaNGOS family don't agree on which MySQL user they
+// expect — vanilla's already matches what's provisioned below, but MaNGOS Four (mop) ships
+// "root;mangos" — while the dashboard only ever provisions WOW_DB_BOOTSTRAP's user/password.
+// Rewriting the *DatabaseInfo lines to match keeps every core's config consistent with the one
+// user actually granted access, and doubles as database-name discovery: the db name each core's
+// own template already uses (e.g. "mangos4"/"character4" for mop) is read straight out of that
+// same line instead of being guessed ahead of time in WOW_DB_BOOTSTRAP.
+const WOW_DB_INFO_SQL_BASE = {
+  LoginDatabaseInfo: 'realmd',
+  WorldDatabaseInfo: 'mangos',
+  CharacterDatabaseInfo: 'characters',
+  LogsDatabaseInfo: 'logs',
+};
+
+function patchWowConfDatabaseCredentials(rt, bootstrap) {
+  const discovered = [];
+  for (const confName of ['mangosd.conf', 'realmd.conf', 'worldserver.conf', 'authserver.conf']) {
+    const confPath = path.join(rt.cfg.serverDir, confName);
+    let content;
+    try {
+      content = fs.readFileSync(confPath, 'utf8');
+    } catch (e) {
+      continue;
+    }
+    let changed = false;
+    content = content.replace(
+      /^(\s*(LoginDatabaseInfo|WorldDatabaseInfo|CharacterDatabaseInfo|LogsDatabaseInfo)\s*=\s*")([^"]*)(")/gm,
+      (full, pre, key, value, post) => {
+        const parts = value.split(';');
+        if (parts.length < 5) return full;
+        const [host, port, , , dbName] = parts;
+        discovered.push({ dbName, baseName: WOW_DB_INFO_SQL_BASE[key] });
+        const newValue = [host, port, bootstrap.user, bootstrap.password, dbName].join(';');
+        if (newValue !== value) changed = true;
+        return pre + newValue + post;
+      },
+    );
+    if (changed) fs.writeFileSync(confPath, content, 'utf8');
+  }
+  return discovered;
+}
+
+async function ensureWowGameDatabases(rt, mysqlCliExe) {
+  const bootstrap = WOW_DB_BOOTSTRAP[rt.cfg.wowVersion];
+  if (!bootstrap) return true;
+
+  const discovered = patchWowConfDatabaseCredentials(rt, bootstrap);
+  const databases = discovered.length > 0 ? discovered.map((d) => d.dbName) : bootstrap.databases;
+
+  const dbStatements = databases.map((db) => `CREATE DATABASE IF NOT EXISTS ${db} DEFAULT CHARACTER SET utf8mb4;`).join('');
+  const sql = dbStatements
+    + `CREATE USER IF NOT EXISTS '${bootstrap.user}'@'127.0.0.1' IDENTIFIED BY '${bootstrap.password}';`
+    + `GRANT ALL PRIVILEGES ON \`%\`.* TO '${bootstrap.user}'@'127.0.0.1';`
+    + 'FLUSH PRIVILEGES;';
+  try {
+    await runCommandAsync(mysqlCliExe, ['-h', '127.0.0.1', '-P', String(WOW_MYSQL_PORT), '-u', 'root', '-e', sql]);
+    pushLog(rt, `[Dashboard] Base(s) MySQL prête(s) pour ${rt.cfg.wowVersion} (utilisateur '${bootstrap.user}'/'${bootstrap.password}').`, 'info');
+  } catch (e) {
+    pushLog(rt, `[Dashboard] Échec de la préparation des bases MySQL : ${e.message}`, 'error');
+    return false;
+  }
+
+  // AzerothCore's source lives under "data/sql/" (its own binaries update it automatically
+  // anyway); CMaNGOS's plain "sql/" layout existing here is what actually distinguishes the
+  // two, rather than checking which repo/version this is by name.
+  const sqlRootDir = path.join(rt.cfg.serverDir, '_build', 'src', 'sql');
+  if (fs.existsSync(sqlRootDir)) {
+    if (discovered.length > 0) {
+      for (const { dbName, baseName } of discovered) {
+        if (baseName) await importCmangosDatabaseIfEmpty(rt, mysqlCliExe, dbName, baseName, sqlRootDir);
+      }
+    } else {
+      // Conf files weren't found yet (shouldn't normally happen once a server's been built) —
+      // fall back to the old guess-by-suffix behavior against the hardcoded database list.
+      for (const dbName of bootstrap.databases) {
+        const suffix = Object.keys(WOW_CMANGOS_SQL_MAP).find((baseName) => dbName.toLowerCase().endsWith(baseName));
+        if (suffix) await importCmangosDatabaseIfEmpty(rt, mysqlCliExe, dbName, WOW_CMANGOS_SQL_MAP[suffix], sqlRootDir);
+      }
+    }
+  } else if (rt.cfg.wowVersion === 'mop' && discovered.length > 0) {
+    await ensureMangosFourWorldData(rt, mysqlCliExe, discovered);
+  }
+  return true;
+}
+
 async function ensureWowMysqlRunning(rt) {
-  if (await checkPortOpen(WOW_MYSQL_PORT, 500)) return true;
-  if (wowMysqlEnsurePromise) return wowMysqlEnsurePromise;
+  const mysqlCliExe = path.join(WOW_DEPS.mysql.installDir, 'bin', 'mysql.exe');
+  if (await checkPortOpen(WOW_MYSQL_PORT, 500)) {
+    return ensureWowGameDatabases(rt, mysqlCliExe);
+  }
+  if (wowMysqlEnsurePromise) {
+    const ready = await wowMysqlEnsurePromise;
+    return ready ? ensureWowGameDatabases(rt, mysqlCliExe) : false;
+  }
 
   wowMysqlEnsurePromise = (async () => {
     const mysqldExe = path.join(WOW_DEPS.mysql.installDir, 'bin', 'mysqld.exe');
-    const mysqlCliExe = path.join(WOW_DEPS.mysql.installDir, 'bin', 'mysql.exe');
     if (!fs.existsSync(mysqldExe)) {
       pushLog(rt, "[Dashboard] MySQL n'est pas encore installé — compile un serveur WoW au moins une fois pour le récupérer.", 'error');
       return false;
@@ -576,7 +935,7 @@ async function ensureWowMysqlRunning(rt) {
     let mysqlProc = null;
     for (let attempt = 1; attempt <= 4 && !mysqlProc; attempt++) {
       try {
-        mysqlProc = await trySpawnMysqldOnce(mysqldExe, 4000);
+        mysqlProc = await trySpawnMysqldOnce(mysqldExe, 15000);
       } catch (e) {
         pushLog(rt, `[Dashboard] MySQL n'a pas démarré (essai ${attempt}/4), nouvelle tentative...`, 'warn');
       }
@@ -586,31 +945,13 @@ async function ensureWowMysqlRunning(rt) {
       return false;
     }
 
-    if (!alreadyInitialized) {
-      try {
-        await runCommandAsync(mysqlCliExe, [
-          '-h', '127.0.0.1', '-P', String(WOW_MYSQL_PORT), '-u', 'root', '-e',
-          "CREATE DATABASE IF NOT EXISTS acore_auth DEFAULT CHARACTER SET utf8mb4;" +
-          "CREATE DATABASE IF NOT EXISTS acore_world DEFAULT CHARACTER SET utf8mb4;" +
-          "CREATE DATABASE IF NOT EXISTS acore_characters DEFAULT CHARACTER SET utf8mb4;" +
-          "CREATE USER IF NOT EXISTS 'acore'@'127.0.0.1' IDENTIFIED BY 'acore';" +
-          "GRANT ALL PRIVILEGES ON acore_auth.* TO 'acore'@'127.0.0.1';" +
-          "GRANT ALL PRIVILEGES ON acore_world.* TO 'acore'@'127.0.0.1';" +
-          "GRANT ALL PRIVILEGES ON acore_characters.* TO 'acore'@'127.0.0.1';" +
-          "FLUSH PRIVILEGES;",
-        ]);
-        pushLog(rt, "[Dashboard] Bases acore_auth / acore_world / acore_characters créées (utilisateur 'acore'/'acore').", 'info');
-      } catch (e) {
-        pushLog(rt, `[Dashboard] Échec de la création des bases MySQL : ${e.message}`, 'error');
-      }
-    }
-
     pushLog(rt, '[Dashboard] MySQL prêt.', 'info');
     return true;
   })();
 
   try {
-    return await wowMysqlEnsurePromise;
+    const ready = await wowMysqlEnsurePromise;
+    return ready ? ensureWowGameDatabases(rt, mysqlCliExe) : false;
   } finally {
     wowMysqlEnsurePromise = null;
   }
@@ -686,7 +1027,9 @@ async function ensureVcpkgDeps(build) {
 // MySQL has no auto-fetch mechanism in AzerothCore's CMake either, so this downloads and
 // extracts it (precompiled dev libraries only, no installer) before configure runs.
 async function installMissingWowDeps(build) {
-  const depsDir = path.join(build.serverDir, '_build', 'deps-download');
+  // Shared (not per-server) since this can also run standalone from the "Dépendances" button,
+  // with no server folder to speak of yet — and it's just a download scratch space either way.
+  const depsDir = path.join(__dirname, '.wow-deps-download');
 
   // `vcpkg install` is idempotent — it only (re)builds ports that are missing or out of date —
   // so it's always run rather than gated on a "looks installed" heuristic. A prior partial/
@@ -716,6 +1059,25 @@ async function installMissingWowDeps(build) {
   }
 }
 
+// CMaNGOS's dep/CMakeLists.txt redefines add_library/add_executable/add_custom_target purely
+// to sort dependency targets into a "Dependencies" folder in the Visual Studio solution
+// explorer — cosmetic, nothing the build needs. But each of those macros hardcodes calling
+// `_add_library` (etc.), and vcpkg's toolchain does the exact same "wrap and call the
+// previous definition as _name" trick to inject itself. The two collide: vcpkg's wrap
+// overwrites what `_add_library` points to, so CMaNGOS's own macro ends up calling itself
+// through that name, infinitely, until CMake's recursion guard (1000) aborts the configure.
+// Since the folder-grouping is purely cosmetic, the safe fix is deleting these macros outright
+// rather than avoiding vcpkg's Boost (which would mean building Boost from source instead).
+function patchCmangosAddLibraryRecursion(srcDir, log) {
+  const depCMakeLists = path.join(srcDir, 'dep', 'CMakeLists.txt');
+  if (!fs.existsSync(depCMakeLists)) return;
+  const content = fs.readFileSync(depCMakeLists, 'utf8');
+  if (!content.includes('macro(add_library _target)')) return; // not this codebase, or already patched
+  const patched = content.replace(/macro\(add_(?:library|executable|custom_target)\s+_target\)[\s\S]*?endmacro\(\)\s*/g, '');
+  fs.writeFileSync(depCMakeLists, patched, 'utf8');
+  log('[Dashboard] Correctif appliqué : neutralisation du hook add_library de dep/CMakeLists.txt (conflit avec vcpkg, cosmétique uniquement).', 'info');
+}
+
 async function runWowBuild(build) {
   const repo = WOW_BUILD_REPOS[build.versionKey];
   const workDir = path.join(build.serverDir, '_build');
@@ -735,15 +1097,17 @@ async function runWowBuild(build) {
     } else {
       wowBuildLog(build, '[Dashboard] Sources déjà présentes, clonage sauté.', 'info');
     }
+    wowBuildLog(build, '[Dashboard] Initialisation des sous-modules Git (dep/, modules/)...', 'info');
+    await runWowBuildStep(build, 'git', ['submodule', 'update', '--init', '--recursive', '--depth', '1'], srcDir);
+    patchCmangosAddLibraryRecursion(srcDir, (line, kind) => wowBuildLog(build, line, kind));
 
     wowBuildLog(build, '[Dashboard] Configuration CMake...', 'info');
     const configureArgs = [
-      '-S', srcDir, '-B', binDir, '-A', 'x64',
-      ...(repo.extraConfigureArgs || []),
+      '-S', srcDir, '-B', binDir, '-A', 'x64', ...(repo.extraConfigureArgs || []),
       `-DCMAKE_TOOLCHAIN_FILE=${path.join(VCPKG_DIR, 'scripts', 'buildsystems', 'vcpkg.cmake')}`,
       `-DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET}`,
     ];
-    if (build.mysqlRoot && build.mysqlRoot !== 'PATH') configureArgs.push(`-DMYSQL_ROOT_DIR=${build.mysqlRoot}`);
+    if (build.mysqlRoot && build.mysqlRoot !== 'PATH') configureArgs.push(`-DMYSQL_ROOT=${build.mysqlRoot}`);
     await runWowBuildStep(build, build.cmakeExe, configureArgs, workDir);
 
     wowBuildLog(build, `[Dashboard] Compilation en cours (${repo.targets.join(' + ')})... cela peut prendre 20 à 60 minutes.`, 'info');
@@ -769,26 +1133,57 @@ async function runWowBuild(build) {
       if (fs.existsSync(configsDir)) fs.cpSync(configsDir, path.join(build.serverDir, 'configs'), { recursive: true });
     }
 
+    // Some targets (e.g. CMaNGOS Four's bundled Lua interpreter, built as lua55.dll) land in a
+    // build output directory completely separate from the exe that needs them at runtime
+    // (dep/lualib/lua/ vs src/mangosd/), so the exe-directory copy above misses them — causing
+    // the exe to fail at launch with STATUS_DLL_NOT_FOUND before it even reaches main(). Sweep
+    // the whole build tree for DLLs instead. First one found for a given name wins, so this never
+    // overrides what the exe-directory copy already placed.
+    for (const dll of findFilesRecursive(binDir, { has: (n) => n.endsWith('.dll') })) {
+      const dest = path.join(build.serverDir, path.basename(dll));
+      if (!fs.existsSync(dest)) fs.copyFileSync(dll, dest);
+    }
+
+    // CMaNGOS-family builds (vanilla/tbc/cata/mop) place each *.conf.dist one directory above
+    // its exe (e.g. src/mangosd/mangosd.conf.dist next to src/mangosd/RelWithDebInfo/mangosd.exe)
+    // rather than alongside the exe itself or in a "configs" subfolder, so the exe-directory copy
+    // above never finds them either. Sweep the whole build tree for those too.
+    for (const distFile of findFilesRecursive(binDir, { has: (n) => n.endsWith('.conf.dist') })) {
+      const dest = path.join(build.serverDir, path.basename(distFile));
+      if (!fs.existsSync(dest)) fs.copyFileSync(distFile, dest);
+    }
+
     // These cores ship only *.conf.dist templates — they refuse to start without the real
     // *.conf file, which admins normally create by hand. Bootstrapped here with the untouched
     // defaults (only if the real file doesn't already exist, so a re-run never clobbers
     // settings someone already customized). Scanning for "*.conf.dist" rather than hardcoding
-    // authserver/worldserver works for the mangosd/realmd naming CMaNGOS uses too.
-    const serverConfigsDir = path.join(build.serverDir, 'configs');
-    try {
-      for (const f of fs.readdirSync(serverConfigsDir)) {
-        if (!f.endsWith('.conf.dist')) continue;
-        const real = path.join(serverConfigsDir, f.replace(/\.dist$/, ''));
-        if (!fs.existsSync(real)) fs.copyFileSync(path.join(serverConfigsDir, f), real);
-      }
-    } catch (e) {}
+    // exact filenames covers both layouts seen so far: AzerothCore puts them in a "configs"
+    // subfolder next to the exe, CMaNGOS's now land directly in build.serverDir root via the
+    // sweep above.
+    for (const dir of [build.serverDir, path.join(build.serverDir, 'configs')]) {
+      try {
+        for (const f of fs.readdirSync(dir)) {
+          if (!f.endsWith('.conf.dist')) continue;
+          const real = path.join(dir, f.replace(/\.dist$/, ''));
+          if (!fs.existsSync(real)) fs.copyFileSync(path.join(dir, f), real);
+        }
+      } catch (e) {}
+    }
 
     // libmysql.lib is only the *import* library used at link time — the actual libmysql.dll
-    // runtime dependency (and libmysql.dll's own dependency on MySQL's bundled OpenSSL DLLs)
-    // doesn't come from the build output at all, so it has to be copied in separately or the
-    // exe fails to start with STATUS_DLL_NOT_FOUND.
+    // runtime dependency doesn't come from the build output at all, so it has to be copied in
+    // separately or the exe fails to start with STATUS_DLL_NOT_FOUND.
     const libmysqlDll = path.join(WOW_DEPS.mysql.installDir, 'lib', 'libmysql.dll');
     if (fs.existsSync(libmysqlDll)) fs.copyFileSync(libmysqlDll, path.join(build.serverDir, 'libmysql.dll'));
+
+    // libmysql.dll and legacy.dll (the OpenSSL 3.x "legacy" provider module, needed by
+    // AzerothCore/CMaNGOS's own OSSL_PROVIDER_load("legacy") at startup) both depend on a DLL
+    // named libcrypto-3-x64.dll/libssl-3-x64.dll — but MySQL bundles its own OpenSSL build
+    // (3.5.x) and vcpkg's is a different one (3.6.4), and only one file can exist under that
+    // name in the server folder. legacy.dll needs its *exact* matching build (provider-loading
+    // is version-sensitive internal ABI, not the stable public API), whereas libmysql.dll only
+    // calls OpenSSL's stable public API and tolerates a newer 3.x build fine — so vcpkg's copy
+    // wins the name collision and is placed last.
     const mysqlBinDir = path.join(WOW_DEPS.mysql.installDir, 'bin');
     try {
       for (const f of fs.readdirSync(mysqlBinDir)) {
@@ -796,10 +1191,14 @@ async function runWowBuild(build) {
       }
     } catch (e) {}
 
-    // See the comment on "openssl:x64-windows" in ensureVcpkgDeps: this is the one file
-    // that build produces, needed at runtime by AzerothCore's own OSSL_PROVIDER_load("legacy").
-    const legacyDll = path.join(VCPKG_DIR, 'installed', 'x64-windows', 'bin', 'legacy.dll');
-    if (fs.existsSync(legacyDll)) fs.copyFileSync(legacyDll, path.join(build.serverDir, 'legacy.dll'));
+    const vcpkgOpensslBinDir = path.join(VCPKG_DIR, 'installed', 'x64-windows', 'bin');
+    try {
+      for (const f of fs.readdirSync(vcpkgOpensslBinDir)) {
+        if (/^lib(ssl|crypto)-.*\.dll$/i.test(f) || f === 'legacy.dll') {
+          fs.copyFileSync(path.join(vcpkgOpensslBinDir, f), path.join(build.serverDir, f));
+        }
+      }
+    } catch (e) {}
 
     wowBuildLog(build, "[Dashboard] Terminé : worldserver.exe / authserver.exe installés dans le dossier du serveur.", 'info');
     wowBuildStatus(build, 'done');
@@ -1400,6 +1799,53 @@ io.on('connection', (socket) => {
     wowBuilds.set(build.id, build);
     ack({ buildId: build.id });
     runWowBuild(build);
+  });
+
+  socket.on('wow:deps:check', (payload, ack) => {
+    if (typeof ack !== 'function') return;
+    const prereq = checkWowBuildPrerequisites();
+    const vcpkgInstalled = path.join(VCPKG_DIR, 'installed', VCPKG_TRIPLET);
+    ack({
+      git: commandExists('git'),
+      cmake: !!prereq.cmakeExe,
+      visualStudio: hasVsCppWorkload(),
+      boostOpenssl: fs.existsSync(path.join(vcpkgInstalled, 'include', 'boost', 'version.hpp'))
+        && fs.existsSync(path.join(vcpkgInstalled, 'include', 'openssl', 'ssl.h')),
+      mysql: fs.existsSync(path.join(WOW_DEPS.mysql.installDir, 'include', 'mysql.h')),
+    });
+  });
+
+  // Same build-log/status/modal plumbing as a real server build, just with no serverDir/repo —
+  // lets "Installer les dépendances" run standalone (Boost/OpenSSL via vcpkg, MySQL client
+  // libs) without requiring the user to have already filled in a server folder.
+  socket.on('wow:deps:start', (payload, ack) => {
+    if (typeof ack !== 'function') return;
+    const prereq = checkWowBuildPrerequisites();
+    if (!prereq.ok) {
+      ack({ error: `Outils à installer manuellement (Visual Studio Installer / git-scm.com) : ${prereq.missing.join(', ')}` });
+      return;
+    }
+    const existing = [...wowBuilds.values()].find((b) => b.serverDir === null && b.status === 'running');
+    if (existing) { ack({ buildId: existing.id }); return; }
+
+    const build = {
+      id: randomUUID(), serverDir: null, versionKey: null,
+      cmakeExe: prereq.cmakeExe, mysqlRoot: prereq.mysqlRoot,
+      status: 'pending', log: [],
+    };
+    wowBuilds.set(build.id, build);
+    ack({ buildId: build.id });
+    (async () => {
+      wowBuildStatus(build, 'running');
+      try {
+        await installMissingWowDeps(build);
+        wowBuildLog(build, '[Dashboard] Dépendances prêtes.', 'info');
+        wowBuildStatus(build, 'done');
+      } catch (e) {
+        wowBuildLog(build, `[Dashboard] Échec de l'installation des dépendances : ${e.message}`, 'error');
+        wowBuildStatus(build, 'error');
+      }
+    })();
   });
 
   socket.on('wow:build:join', ({ buildId } = {}) => {

@@ -51,8 +51,12 @@ const I18N = {
     'server.eulaBanner': "Le serveur refuse de démarrer tant que l'EULA n'est pas acceptée.",
     'server.acceptEula': "Accepter l'EULA",
     'server.console': 'Console',
-    'server.errorsTitle': 'Erreurs (clic pour réinitialiser)',
-    'server.warningsTitle': 'Avertissements (clic pour réinitialiser)',
+    'server.errorsTitle': 'Erreurs (clic pour voir la liste)',
+    'server.warningsTitle': 'Avertissements (clic pour voir la liste)',
+    'server.errors': 'Erreurs',
+    'server.warnings': 'Avertissements',
+    'server.noErrors': 'Aucune erreur.',
+    'server.noWarnings': 'Aucun avertissement.',
     'server.autoscrollTitle': 'Défilement automatique',
     'server.autoscroll': 'Auto-scroll',
     'server.exportLogsTitle': 'Exporter les logs (.txt)',
@@ -95,16 +99,25 @@ const I18N = {
     'create.hytaleAssets': 'Chemin vers Assets.zip',
     'create.executable': 'Exécutable',
     'create.wowVersion': 'Version de WoW',
-    'create.wowBuildTitleAttr': 'Nécessite Git, CMake et Visual Studio (Desktop C++). Clone et compile les serveurs dans le dossier ci-dessus — 20 à 60 minutes. Seul WotLK a été testé de bout en bout ; les autres versions utilisent le même pipeline mais peuvent révéler un souci spécifique au premier essai.',
-    'create.wowBuild': 'Compiler et installer',
+    'create.wowBuildTitleAttr': 'Clone, compile et crée automatiquement le serveur dans le dossier ci-dessus (20 à 60 minutes) — un seul clic. Nécessite Git, CMake et Visual Studio (Desktop C++), voir le bouton Dépendances. Seul WotLK a été testé de bout en bout ; les autres versions utilisent le même pipeline mais peuvent révéler un souci spécifique au premier essai.',
+    'create.wowBuild': 'Compiler',
     'create.wowVersionNote': 'Pas de projet open source fiable pour cette version — installation manuelle requise.',
     'create.appearance': 'Apparence',
     'create.icon': 'Icône',
     'create.color': 'Couleur',
     'create.preview': 'Aperçu',
     'create.folderHint': "Le dossier doit déjà contenir les fichiers du serveur (jar / exécutable) — la création ici ne fait qu'enregistrer le serveur dans le dashboard.",
-    'wowBuild.title': 'Compilation AzerothCore',
+    'create.wowDeps': 'Dépendances',
+    'wowBuild.title': 'Compilation',
+    'wowBuild.titleDeps': 'Installation des dépendances',
     'wowBuild.starting': 'Démarrage...',
+    'wowDeps.title': 'Dépendances de compilation WoW',
+    'wowDeps.hint': "Git, CMake et Visual Studio doivent être installés manuellement (liens ci-dessous). Boost, OpenSSL et MySQL peuvent être installés automatiquement.",
+    'wowDeps.vsHint': 'cocher "Desktop development with C++" à l\'installation, CMake est inclus',
+    'wowDeps.install': 'Installer Boost/OpenSSL/MySQL',
+    'wowDeps.ok': 'Installé',
+    'wowDeps.missing': 'Manquant',
+    'wowDeps.checking': 'Vérification...',
     'settings.title': 'Paramètres du serveur',
     'settings.name': 'Nom',
     'settings.extraJavaArgs': 'Arguments Java additionnels',
@@ -140,8 +153,12 @@ const I18N = {
     'server.eulaBanner': 'The server refuses to start until the EULA is accepted.',
     'server.acceptEula': 'Accept EULA',
     'server.console': 'Console',
-    'server.errorsTitle': 'Errors (click to reset)',
-    'server.warningsTitle': 'Warnings (click to reset)',
+    'server.errorsTitle': 'Errors (click to view list)',
+    'server.warningsTitle': 'Warnings (click to view list)',
+    'server.errors': 'Errors',
+    'server.warnings': 'Warnings',
+    'server.noErrors': 'No errors.',
+    'server.noWarnings': 'No warnings.',
     'server.autoscrollTitle': 'Auto-scroll',
     'server.autoscroll': 'Auto-scroll',
     'server.exportLogsTitle': 'Export logs (.txt)',
@@ -184,16 +201,25 @@ const I18N = {
     'create.hytaleAssets': 'Path to Assets.zip',
     'create.executable': 'Executable',
     'create.wowVersion': 'WoW version',
-    'create.wowBuildTitleAttr': 'Requires Git, CMake and Visual Studio (Desktop C++). Clones and compiles the servers into the folder above — 20 to 60 minutes. Only WotLK has been tested end-to-end; other versions use the same pipeline but may surface a version-specific issue on first try.',
-    'create.wowBuild': 'Compile and install',
+    'create.wowBuildTitleAttr': 'Clones, compiles and automatically creates the server in the folder above (20 to 60 minutes) — one click. Requires Git, CMake and Visual Studio (Desktop C++), see the Dependencies button. Only WotLK has been tested end-to-end; other versions use the same pipeline but may surface a version-specific issue on first try.',
+    'create.wowBuild': 'Compile',
     'create.wowVersionNote': 'No reliable open-source project for this version — manual installation required.',
     'create.appearance': 'Appearance',
     'create.icon': 'Icon',
     'create.color': 'Color',
     'create.preview': 'Preview',
     'create.folderHint': 'The folder must already contain the server files (jar / executable) — creating it here just registers the server in the dashboard.',
-    'wowBuild.title': 'AzerothCore compilation',
+    'create.wowDeps': 'Dependencies',
+    'wowBuild.title': 'Compiling',
+    'wowBuild.titleDeps': 'Installing dependencies',
     'wowBuild.starting': 'Starting...',
+    'wowDeps.title': 'WoW build dependencies',
+    'wowDeps.hint': 'Git, CMake and Visual Studio must be installed manually (links below). Boost, OpenSSL and MySQL can be installed automatically.',
+    'wowDeps.vsHint': 'check "Desktop development with C++" during install, CMake is included',
+    'wowDeps.install': 'Install Boost/OpenSSL/MySQL',
+    'wowDeps.ok': 'Installed',
+    'wowDeps.missing': 'Missing',
+    'wowDeps.checking': 'Checking...',
     'settings.title': 'Server settings',
     'settings.name': 'Name',
     'settings.extraJavaArgs': 'Additional Java arguments',
@@ -394,10 +420,11 @@ function showServer(id) {
 let currentConsoleLines = [];
 
 function resetServerViewState() {
-  consoleEl.innerHTML = '';
+  mainConsoleBatch.reset();
   currentConsoleLines = [];
   errorCount = 0;
   warnCount = 0;
+  severityEntries = [];
   updateSeverityBadges();
   currentStatus = 'stopped';
   startedAt = null;
@@ -766,6 +793,8 @@ const errorCountEl = el('errorCount');
 const warnCountEl = el('warnCount');
 let errorCount = 0;
 let warnCount = 0;
+const MAX_SEVERITY_ENTRIES = 500;
+let severityEntries = []; // { line, kind: 'error' | 'warn' }
 
 function updateSeverityBadges() {
   errorCountEl.textContent = errorCount;
@@ -774,8 +803,53 @@ function updateSeverityBadges() {
   warnBadge.classList.toggle('show', warnCount > 0);
 }
 
-errorBadge.addEventListener('click', () => { errorCount = 0; updateSeverityBadges(); });
-warnBadge.addEventListener('click', () => { warnCount = 0; updateSeverityBadges(); });
+// ---- Error / warn list modal ----
+const severityModal = el('severityModal');
+const severityModalTitle = el('severityModalTitle');
+const severityModalIcon = el('severityModalIcon');
+const severityConsole = el('severityConsole');
+let severityModalKind = null;
+
+function appendSeverityLine(entry) {
+  const div = document.createElement('div');
+  div.className = 'console-line ' + entry.kind;
+  div.innerHTML = formatLogLine(entry.line);
+  severityConsole.appendChild(div);
+}
+
+// Full rebuild only happens when the modal opens — a live update while it's already open (a new
+// matching entry arriving) just appends that one line instead of re-rendering the whole list,
+// which otherwise turns a burst of errors into an O(n²) DOM rebuild.
+function renderSeverityModal() {
+  severityConsole.innerHTML = '';
+  const matching = severityEntries.filter((e) => e.kind === severityModalKind);
+  if (matching.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'files-list-empty';
+    empty.textContent = severityModalKind === 'error' ? t('server.noErrors') : t('server.noWarnings');
+    severityConsole.appendChild(empty);
+    return;
+  }
+  matching.forEach(appendSeverityLine);
+}
+
+function openSeverityModal(kind) {
+  severityModalKind = kind;
+  severityModalTitle.textContent = kind === 'error' ? t('server.errors') : t('server.warnings');
+  severityModalIcon.className = kind === 'error' ? 'bi bi-x-circle-fill' : 'bi bi-exclamation-triangle-fill';
+  renderSeverityModal();
+  severityModal.classList.add('show');
+}
+
+el('severityClose').addEventListener('click', () => {
+  // Just closes the list — the badge/count stays as-is so the button doesn't vanish out from
+  // under the user right after they clicked it (it only disappears once the count is truly 0,
+  // e.g. after switching servers).
+  severityModal.classList.remove('show');
+});
+
+errorBadge.addEventListener('click', () => openSeverityModal('error'));
+warnBadge.addEventListener('click', () => openSeverityModal('warn'));
 
 const LOG_LEVEL_REGEX = /\[[^\]]*\b(WARN|ERROR|SEVERE|FATAL)\b[^\]]*\]/i;
 
@@ -789,21 +863,69 @@ function detectSeverity(entry) {
 
 const MAX_CLIENT_CONSOLE_LINES = 1000;
 
-function addConsoleLine(entry) {
-  const div = document.createElement('div');
-  div.className = 'console-line ' + (entry.kind || 'info');
-  div.innerHTML = formatLogLine(entry.line);
-  consoleEl.appendChild(div);
-  while (consoleEl.children.length > MAX_CLIENT_CONSOLE_LINES) {
-    consoleEl.removeChild(consoleEl.firstChild);
+// A burst of log lines (world generation spam, a server's startup, hundreds of script-loading
+// messages) used to append + scroll the DOM on every single line as it arrived — synchronous,
+// so a big enough burst visibly stutters the whole page. Queuing lines and flushing them in one
+// batch per animation frame (same fix already applied to the WoW build console) caps the actual
+// DOM work to 60 times a second no matter how fast messages come in.
+function createBatchedConsole(container, maxLines, onFlush) {
+  const maxPending = Math.max(maxLines * 5, 2000);
+  let pending = [];
+  let scheduled = false;
+
+  function flush() {
+    scheduled = false;
+    if (pending.length === 0) return;
+    const toRender = pending.length > maxLines ? pending.slice(-maxLines) : pending;
+    pending = [];
+    const fragment = document.createDocumentFragment();
+    for (const entry of toRender) {
+      const div = document.createElement('div');
+      div.className = 'console-line ' + (entry.kind || 'info');
+      div.innerHTML = formatLogLine(entry.line);
+      fragment.appendChild(div);
+    }
+    container.appendChild(fragment);
+    while (container.children.length > maxLines) container.removeChild(container.firstChild);
+    if (onFlush) onFlush();
   }
+
+  return {
+    push(entry) {
+      pending.push(entry);
+      if (pending.length > maxPending) pending.splice(0, pending.length - maxPending);
+      if (!scheduled) { scheduled = true; requestAnimationFrame(flush); }
+    },
+    reset() {
+      pending = [];
+      scheduled = false;
+      container.innerHTML = '';
+    },
+  };
+}
+
+const mainConsoleBatch = createBatchedConsole(consoleEl, MAX_CLIENT_CONSOLE_LINES, () => {
   if (autoScroll) consoleEl.scrollTop = consoleEl.scrollHeight;
+});
+
+function addConsoleLine(entry) {
+  mainConsoleBatch.push(entry);
   currentConsoleLines.push(entry.line);
   if (currentConsoleLines.length > MAX_CLIENT_CONSOLE_LINES) currentConsoleLines.shift();
 
   const severity = detectSeverity(entry);
-  if (severity === 'error') { errorCount++; updateSeverityBadges(); }
-  else if (severity === 'warn') { warnCount++; updateSeverityBadges(); }
+  if (severity === 'error' || severity === 'warn') {
+    severityEntries.push({ line: entry.line, kind: severity });
+    if (severityEntries.length > MAX_SEVERITY_ENTRIES) severityEntries.shift();
+    if (severity === 'error') errorCount++; else warnCount++;
+    updateSeverityBadges();
+    if (severityModal.classList.contains('show') && severityModalKind === severity) {
+      const emptyPlaceholder = severityConsole.querySelector('.files-list-empty');
+      if (emptyPlaceholder) emptyPlaceholder.remove();
+      appendSeverityLine({ line: entry.line, kind: severity });
+      severityConsole.scrollTop = severityConsole.scrollHeight;
+    }
+  }
 }
 
 function formatMem(bytes) {
@@ -815,15 +937,16 @@ function formatMem(bytes) {
 
 socket.on('console:history', ({ id, history }) => {
   if (id === logsViewId) {
-    logsConsole.innerHTML = '';
+    logsConsoleBatch.reset();
     logsConsoleLines = [];
     history.forEach(addLogsConsoleLine);
   }
   if (id !== currentServerId) return;
-  consoleEl.innerHTML = '';
+  mainConsoleBatch.reset();
   currentConsoleLines = [];
   errorCount = 0;
   warnCount = 0;
+  severityEntries = [];
   history.forEach(addConsoleLine);
   updateSeverityBadges();
 });
@@ -1035,15 +1158,12 @@ let logsViewId = null;
 let logsViewName = '';
 let logsConsoleLines = [];
 
-function addLogsConsoleLine(entry) {
-  const div = document.createElement('div');
-  div.className = 'console-line ' + (entry.kind || 'info');
-  div.innerHTML = formatLogLine(entry.line);
-  logsConsole.appendChild(div);
-  while (logsConsole.children.length > MAX_CLIENT_CONSOLE_LINES) {
-    logsConsole.removeChild(logsConsole.firstChild);
-  }
+const logsConsoleBatch = createBatchedConsole(logsConsole, MAX_CLIENT_CONSOLE_LINES, () => {
   logsConsole.scrollTop = logsConsole.scrollHeight;
+});
+
+function addLogsConsoleLine(entry) {
+  logsConsoleBatch.push(entry);
   logsConsoleLines.push(entry.line);
   if (logsConsoleLines.length > MAX_CLIENT_CONSOLE_LINES) logsConsoleLines.shift();
 }
@@ -1052,7 +1172,7 @@ function openLogsModal(id, name) {
   logsViewId = id;
   logsViewName = name;
   logsModalTitle.textContent = `Logs — ${name}`;
-  logsConsole.innerHTML = '';
+  logsConsoleBatch.reset();
   logsConsoleLines = [];
   socket.emit('server:join', { id });
   logsModal.classList.add('show');
@@ -1118,10 +1238,12 @@ const wowBuildModal = el('wowBuildModal');
 const wowBuildConsole = el('wowBuildConsole');
 const wowBuildStatusText = el('wowBuildStatusText');
 const wowBuildProgressFill = el('wowBuildProgressFill');
-const WOW_BUILDABLE_VERSIONS = new Set(['vanilla', 'tbc', 'wotlk', 'cata']);
+const WOW_BUILDABLE_VERSIONS = new Set(['vanilla', 'tbc', 'wotlk', 'cata', 'mop']);
 let currentWowBuildId = null;
 let currentWowBuildStatus = null;
 let wowBuildProgressPercent = 0;
+let wowBuildAutoCreateDone = false;
+let currentWowBuildIsDepsOnly = false;
 
 // No real percentage is available from the build itself (just a log stream), so this
 // approximates progress from the same "[Dashboard] ..." markers already logged server-side —
@@ -1171,12 +1293,20 @@ const MAX_WOW_BUILD_CONSOLE_LINES = 500;
 let wowBuildPendingLines = [];
 let wowBuildFlushScheduled = false;
 
+// Kept separately from the (DOM-capped) rendered console so "download the log" still gets the
+// full build output, not just the last 500 visible lines.
+const MAX_WOW_BUILD_DOWNLOAD_LINES = 20000;
+let wowBuildAllLines = [];
+
 function resetWowBuildUI() {
   currentWowBuildId = null;
   currentWowBuildStatus = null;
+  wowBuildAutoCreateDone = false;
+  currentWowBuildIsDepsOnly = false;
   wowBuildModal.classList.remove('show');
   wowBuildConsole.innerHTML = '';
   wowBuildPendingLines = [];
+  wowBuildAllLines = [];
   setWowBuildProgress(0, null);
   toggleWowBuildAvailability();
 }
@@ -1210,6 +1340,8 @@ function flushWowBuildLines() {
 const MAX_WOW_BUILD_PENDING_LINES = 5000;
 
 function addWowBuildLine(entry) {
+  wowBuildAllLines.push(entry.line);
+  if (wowBuildAllLines.length > MAX_WOW_BUILD_DOWNLOAD_LINES) wowBuildAllLines.shift();
   wowBuildPendingLines.push(entry);
   // Cap the queue itself too: if lines are arriving faster than animation frames can flush
   // them (a very large burst), drop the oldest queued ones rather than letting it grow
@@ -1231,9 +1363,22 @@ function applyWowBuildStatus(status) {
     btnWowBuild.disabled = true;
   } else if (status === 'done') {
     wowBuildStatusText.className = 'wow-build-status status-done';
-    wowBuildStatusText.textContent = 'Terminé — tu peux cliquer sur "Créer".';
     btnWowBuild.disabled = false;
     setWowBuildProgress(100, 'status-done');
+    if (currentWowBuildIsDepsOnly) {
+      wowBuildStatusText.textContent = 'Dépendances installées.';
+    } else if (!wowBuildAutoCreateDone) {
+      wowBuildAutoCreateDone = true;
+      wowBuildStatusText.textContent = 'Terminé — création du serveur...';
+      submitCreateServer((created) => {
+        wowBuildStatusText.textContent = created
+          ? 'Terminé — serveur créé !'
+          : "Compilation terminée, mais la création du serveur a échoué (voir le message dans le formulaire).";
+        if (created) setTimeout(() => wowBuildModal.classList.remove('show'), 1200);
+      });
+    } else {
+      wowBuildStatusText.textContent = 'Terminé — serveur déjà créé.';
+    }
   } else if (status === 'error') {
     wowBuildStatusText.className = 'wow-build-status status-error';
     wowBuildStatusText.textContent = 'Échec de la compilation, voir les logs ci-dessous.';
@@ -1243,6 +1388,69 @@ function applyWowBuildStatus(status) {
 }
 
 el('wowBuildClose').addEventListener('click', () => wowBuildModal.classList.remove('show'));
+el('wowBuildExport').addEventListener('click', () => {
+  downloadTextFile('wow-build-log.txt', wowBuildAllLines.join('\n'));
+});
+
+// ---- WoW build dependencies checklist ----
+const wowDepsModal = el('wowDepsModal');
+const wowDepsList = el('wowDepsList');
+const wowBuildModalTitle = el('wowBuildModalTitle');
+const btnWowDepsInstall = el('btnWowDepsInstall');
+
+function setWowDepItem(dep, state) {
+  const item = wowDepsList.querySelector(`[data-dep="${dep}"]`);
+  if (!item) return;
+  item.classList.remove('deps-ok', 'deps-missing');
+  const icon = item.querySelector('.wow-deps-icon');
+  const status = item.querySelector('.wow-deps-status');
+  if (state === null) {
+    icon.className = 'bi bi-hourglass-split wow-deps-icon';
+    status.textContent = t('wowDeps.checking');
+  } else if (state) {
+    item.classList.add('deps-ok');
+    icon.className = 'bi bi-check-circle-fill wow-deps-icon';
+    status.textContent = t('wowDeps.ok');
+  } else {
+    item.classList.add('deps-missing');
+    icon.className = 'bi bi-x-circle-fill wow-deps-icon';
+    status.textContent = t('wowDeps.missing');
+  }
+}
+
+function refreshWowDeps() {
+  ['git', 'cmake', 'visualStudio', 'boostOpenssl', 'mysql'].forEach((dep) => setWowDepItem(dep, null));
+  socket.emit('wow:deps:check', {}, (status) => {
+    Object.entries(status || {}).forEach(([dep, ok]) => setWowDepItem(dep, ok));
+  });
+}
+
+el('btnWowDeps').addEventListener('click', () => {
+  wowDepsModal.classList.add('show');
+  refreshWowDeps();
+});
+el('wowDepsClose').addEventListener('click', () => wowDepsModal.classList.remove('show'));
+
+btnWowDepsInstall.addEventListener('click', () => {
+  btnWowDepsInstall.disabled = true;
+  socket.emit('wow:deps:start', {}, (result) => {
+    btnWowDepsInstall.disabled = false;
+    if (result && result.error) {
+      showCreateServerError(result.error);
+      return;
+    }
+    currentWowBuildId = result.buildId;
+    currentWowBuildIsDepsOnly = true;
+    wowBuildConsole.innerHTML = '';
+    wowBuildAllLines = [];
+    setWowBuildProgress(2, 'status-running');
+    wowBuildModalTitle.textContent = t('wowBuild.titleDeps');
+    wowBuildStatusText.className = 'wow-build-status status-running';
+    wowBuildStatusText.textContent = 'Démarrage...';
+    wowDepsModal.classList.remove('show');
+    wowBuildModal.classList.add('show');
+  });
+});
 
 btnWowBuild.addEventListener('click', () => {
   // A build for this session is already running: just reopen the progress window on it.
@@ -1259,6 +1467,9 @@ btnWowBuild.addEventListener('click', () => {
   }
   showCreateServerError('');
   wowBuildConsole.innerHTML = '';
+  wowBuildAutoCreateDone = false;
+  currentWowBuildIsDepsOnly = false;
+  wowBuildModalTitle.textContent = t('wowBuild.title');
   setWowBuildProgress(2, 'status-running');
   wowBuildModal.classList.add('show');
   btnWowBuild.disabled = true;
@@ -1288,6 +1499,7 @@ socket.on('wowBuild:history', ({ buildId, history, status }) => {
   if (buildId !== currentWowBuildId) return;
   wowBuildConsole.innerHTML = '';
   wowBuildPendingLines = [];
+  wowBuildAllLines = [];
   setWowBuildProgress(0, null);
   history.forEach(addWowBuildLine);
   applyWowBuildStatus(status);
@@ -1338,8 +1550,7 @@ function openCreateModalWithClone(id) {
   socket.emit('server:join', { id });
 }
 
-createServerForm.addEventListener('submit', (e) => {
-  e.preventDefault();
+function submitCreateServer(onDone) {
   const name = el('newServerName').value.trim();
   const serverDir = el('newServerDir').value.trim();
   const isWowCreate = newServerGame.value === 'wow';
@@ -1368,10 +1579,17 @@ createServerForm.addEventListener('submit', (e) => {
   socket.emit('servers:create', payload, (result) => {
     if (result && result.error) {
       showCreateServerError(result.error);
+      if (onDone) onDone(false);
       return;
     }
     createServerModal.classList.remove('show');
+    if (onDone) onDone(true);
   });
+}
+
+createServerForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  submitCreateServer();
 });
 
 // ---- Settings modal ----
