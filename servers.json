@@ -1,28 +1,2 @@
 [
-  {
-    "id": "wow-test-1",
-    "name": "WoW Test 1",
-    "game": "wow",
-    "serverDir": "D:\\OERIA\\wow_server_test_1",
-    "gamePort": 8085,
-    "jarName": null,
-    "javaPath": null,
-    "minRam": null,
-    "maxRam": null,
-    "extraJavaArgs": [],
-    "assetsPath": null,
-    "exePath": "mangosd.exe",
-    "authExePath": "realmd.exe",
-    "launchArgs": [],
-    "wowVersion": "mop",
-    "stopTimeoutMs": 30000,
-    "limits": {
-      "cpuMaxPercent": 100,
-      "ramMaxMB": null,
-      "storageMaxGB": null
-    },
-    "pinned": false,
-    "icon": "star-fill",
-    "color": "#aa2bee"
-  }
 ]
